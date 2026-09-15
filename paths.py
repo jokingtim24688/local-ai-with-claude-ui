@@ -14,8 +14,11 @@ import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FROZEN = getattr(sys, "frozen", False)
+# frozen = packaged by PyInstaller (sys.frozen) OR compiled by Nuitka (__compiled__)
+FROZEN = getattr(sys, "frozen", False) or ("__compiled__" in globals())
 
+# PyInstaller extracts to sys._MEIPASS; Nuitka onefile extracts next to __file__,
+# so HERE already points at the bundled resources there.
 RES_DIR = getattr(sys, "_MEIPASS", HERE)
 
 APP_NAME = "AiHeaven"
@@ -34,7 +37,9 @@ def _writable(d: str) -> bool:
 
 def data_dir() -> str:
     if FROZEN:
-        near = os.path.dirname(sys.executable)
+        # dir of the real .exe (works for both PyInstaller and Nuitka onefile,
+        # where sys.executable can point at the temp unpack dir instead)
+        near = os.path.dirname(os.path.abspath(sys.argv[0]))
         cand = os.path.join(near, f"{APP_NAME}-data")
         if _writable(cand):
             return cand

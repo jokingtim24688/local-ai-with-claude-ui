@@ -190,3 +190,10 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   panes (not white).
 - Model pill filtered to hermes/dolphin only. mini-dot mirrors ollama status.
 - Images: preview_chat.png (repolished), preview_collapsed.png.
+
+## PIVOT 14: Nuitka (real compiled exe)
+- Added build_nuitka.py + build_nuitka.bat: Nuitka --standalone --onefile compiles
+  desktop.py to a native binary (true machine code, not interpreter-bundled like
+  PyInstaller). Icon baked in; static/assets/skills/branding.json included.
+- paths.py: FROZEN now also true under Nuitka ("__compiled__" in globals()); DATA_DIR
+  uses dirname(sys.argv[0]) so AiHeaven-data lands next to the real exe for both.
