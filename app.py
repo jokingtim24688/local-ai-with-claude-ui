@@ -109,6 +109,14 @@ DEFAULT_SUBAGENTS = [
                "verdict 'redo' and a clear reason — it goes back to the queue for another "
                "agent. Only approve work that meets prompt.md.",
      "model": DOLPHIN, "skills": ["code-review"], "vm": None},
+    {"id": "porter", "name": "porter",
+     "desc": "makes everything run on Windows — knows both OSes and converts Linux-only commands",
+     "system": "You are the PORTER. The agent VMs are Linux but the app runs on the user's "
+               "Windows machine. Before anything ships, make it run on Windows: prefer portable "
+               "Python/Node/git; convert Linux-only shell to Windows (cmd/PowerShell) using the "
+               "cross-platform-shell skill; when a script is needed, emit BOTH a .sh (Linux VM) "
+               "and a .bat/.ps1 (Windows). Verify on the Windows host, not just the Linux VM.",
+     "model": DOLPHIN, "skills": ["cross-platform-shell", "vscode-windows-dev"], "vm": None},
 ]
 
 

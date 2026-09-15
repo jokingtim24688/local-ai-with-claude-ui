@@ -19,6 +19,7 @@ async function init() {
   setGreeting();
   document.addEventListener("click", () => { hideMenu(); $("#view-menu").classList.add("hidden"); });
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
+  applyDefaultModel();
   loadTree(); loadVM();
 }
 
@@ -177,7 +178,13 @@ async function loadBranding() {
     const r = document.documentElement.style;
     if (b.accent) r.setProperty("--clay", b.accent);
     if (b.accent_soft) r.setProperty("--clay-soft", b.accent_soft);
+    state.defaultModel = b.default_model || "";
   } catch {}
+}
+function applyDefaultModel() {
+  if (!state.defaultModel) return;
+  const opt = [...modelSel.options].find((o) => o.value === state.defaultModel);
+  if (opt) modelSel.value = state.defaultModel;   // parent default (e.g. hermes3:8b)
 }
 async function loadConfig() {
   try {
