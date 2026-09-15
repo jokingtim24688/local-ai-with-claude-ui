@@ -147,3 +147,16 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   disabled agents. subagent 'enabled' flag; /api/vm returns enabled + system.
 - UI: System load meters (CPU/RAM/GPU, warm/hot) + disabled agent card (greyed)
   in VM tab. requirements += psutil. Image: preview_vm.png.
+
+## PIVOT 10: per-agent prompt slices, idle-pause, affirmations, VM design
+- prompt.md format = `name: task` lines + `all:` lines. read_prompt_for(who) feeds
+  each subagent only its lines (+all); parent sees whole. Parent prompt updated.
+- Runtime state per agent (from task board): active/paused/disabled. Idle=paused.
+  sync_machines tool suspends idle agents' VMs (vm.suspend hook) + resumes working
+  ones (vm.resume). /api/vm returns runtime + system load. UI shows paused (blue) vs
+  disabled (red), running/paused counts.
+- Auto-affirmation: reviewer approve -> parent posts "Great job ..." to the doer.
+- VM_DESIGN.md: split thinking(host Ollama)/working(per-agent VM); Multipass Ubuntu
+  24.04, shared mount, multipass exec for run_command, suspend/start to breathe;
+  VirtualBox/Hyper-V/QEMU/WSL/Docker alternatives. Remaining bridge: route
+  run_command through multipass exec for VM-backed agents.

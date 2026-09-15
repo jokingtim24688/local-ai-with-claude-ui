@@ -44,19 +44,24 @@ PENDING: dict[str, dict] = {}
 
 SYSTEM_PROMPT = """You are the PARENT — two models working together in one VM: a
 PROMPT-MAKER half and a SKILL-MAKER half. You manage a pool of lower subagents.
-- Prompt-maker: turn the user's request into a precise brief, write it to prompt.md
-  with write_file, break it into tasks with add_task. Every subagent reads prompt.md
-  and follows it. Rewrite it whenever the goal changes; announce on the bus.
+- Prompt-maker: turn the user's request into a precise brief and write prompt.md
+  with write_file, ONE LINE PER AGENT — `agentname: what that agent should do` —
+  plus `all: <shared goal>` lines the whole pool follows. Each subagent is fed only
+  its own lines and the `all:` lines. Break work into tasks with add_task. Rewrite
+  prompt.md whenever the goal changes; announce on the bus.
 - Skill-maker: when the pool needs a capability no agent has, create it yourself
   with create_skill(name, desc, body). It loads live for every agent.
+- Your two halves normally split (one prompts, one makes skills); when one isn't
+  needed, both work the current job together.
 - Delegate with spawn_subagent and coordinate over the bus: design -> "designer",
   research -> "researcher", tests -> "tester", review -> "reviewer", building -> "buddy".
-- You are the parent: go help a subagent that is stuck.
+- You are the parent: go help a subagent that is stuck, and affirm good work — when
+  the reviewer approves a task the doer is thanked automatically; reinforce it too.
 - WATCH THE MACHINE: call get_system_load before spawning agents. If CPU/GPU/RAM
-  are high, do NOT add more agents. If you already have too many, disable one whose
-  task another agent can do with disable_agent(name) — its task is auto-requeued and
-  another agent picks it up. Re-enable with enable_agent when load drops. Keep the
-  user's PC responsive.
+  are high, do NOT add more agents. Call sync_machines to pause idle agents (their
+  VM suspends so the PC can breathe) and wake ones with work. If you have too many,
+  disable one whose task another agent can do with disable_agent(name) — its task is
+  auto-requeued. Re-enable with enable_agent when load drops. Keep the PC responsive.
 All agents share the same sandbox (same storage) and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
@@ -105,12 +110,28 @@ PROMPT_FILE = "prompt.md"  # shared standing prompt every agent obeys
 
 
 def read_prompt() -> str:
-    """The shared prompt.md in the sandbox — the prompt-writer maintains it and
-    every agent follows it. Empty if not written yet."""
+    """The shared prompt.md in the sandbox. The parent maintains it, formatted as
+    `name: prompt` lines (plus `all:` for the whole pool)."""
     try:
         return tools.read_file(PROMPT_FILE).strip()
     except Exception:
         return ""
+
+
+def read_prompt_for(who: str) -> str:
+    """The slice of prompt.md addressed to one agent: its own `name:` lines plus
+    any `all:` lines. Parent sees the whole file. Falls back to the whole file if
+    nothing is addressed to this agent."""
+    import re
+    raw = read_prompt()
+    if not raw or who in ("main", "parent"):
+        return raw
+    picked = []
+    for line in raw.splitlines():
+        m = re.match(r"\s*([A-Za-z0-9_\-]+)\s*:\s*(.*)", line)
+        if m and m.group(1).lower() in (who.lower(), "all", "everyone"):
+            picked.append(m.group(2))
+    return "\n".join(picked).strip() or raw
 
 
 def build_system() -> str:
@@ -419,8 +440,11 @@ def dispatch_tasks(name: str, args: dict, who: str):
             return "error: no such task"
         if args.get("verdict") == "approve":
             t["status"] = "done"
+            if t.get("assignee"):                          # parent affirms good work
+                bus_post("main", t["assignee"],
+                         f"Great job on '{t['desc']}' — approved. 🎉")
         else:
-            t["status"] = "todo"; t["assignee"] = ""      # re-queue for another agent
+            t["status"] = "todo"; t["assignee"] = ""       # re-queue for another agent
         t["note"] = args.get("note", "")
         save_tasks(tk); return f"OK: {t['id']} {t['status']}"
     return None
@@ -512,10 +536,48 @@ SYS_SCHEMAS = [
     {"type": "function", "function": {
         "name": "enable_agent", "description": "Re-enable a disabled subagent when load drops.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
+    {"type": "function", "function": {
+        "name": "sync_machines",
+        "description": "Pause idle agents' VMs (no active task) and wake ones with work, so the PC can breathe.",
+        "parameters": {"type": "object", "properties": {}}}},
 ]
 
 
+def _doing_set() -> set:
+    return {t["assignee"] for t in load_tasks() if t.get("status") == "doing" and t.get("assignee")}
+
+
+def agent_runtime(sub: dict, doing: set) -> str:
+    if not sub.get("enabled", True):
+        return "disabled"
+    return "active" if sub["name"] in doing else "paused"
+
+
+def sync_machines() -> str:
+    """Suspend the VM of every idle agent, resume every agent with a live task.
+    Runs the agent's vm.suspend / vm.resume hook when set; otherwise just reports
+    the intended state (in-process agents need no VM)."""
+    doing = _doing_set()
+    import subprocess
+    out = []
+    for s in load_subagents():
+        if not s.get("enabled", True):
+            continue
+        state = "active" if s["name"] in doing else "paused"
+        vm = s.get("vm") or {}
+        hook = vm.get("resume" if state == "active" else "suspend")
+        if hook:
+            try:
+                subprocess.Popen(hook, shell=True)
+            except Exception:
+                pass
+        out.append(f"{s['name']}:{state}")
+    return "OK: " + ", ".join(out) if out else "OK: no agents"
+
+
 def dispatch_parent(name: str, args: dict):
+    if name == "sync_machines":
+        return sync_machines()
     if name == "get_system_load":
         s = system_load()
         parts = [f"cpu={s['cpu']}%", f"ram={s['ram']}%", f"cores={s['cores']}"]
@@ -570,10 +632,11 @@ def dispatch_bus(name: str, args: dict, who: str):
 def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     """Run a nested tool-loop for one subagent and return its final answer.
     Runs autonomously (no approval modal) but stays inside the sandbox."""
+    who = sub.get("name", "subagent")
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse."]
-    p = read_prompt()
+    p = read_prompt_for(who)      # only the lines addressed to this agent + `all:`
     if p:
-        sys_lines.append("\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
+        sys_lines.append("\n# YOUR STANDING PROMPT (from prompt.md — always follow)\n" + p)
     # every subagent gets the whole skill library: roster in the prompt, full
     # bodies loadable on demand via load_skill (same as the main agent).
     roster = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
@@ -588,7 +651,6 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     msgs = [{"role": "system", "content": "\n".join(sys_lines)},
             {"role": "user", "content": task}]
     model = sub.get("model") or default_model
-    who = sub.get("name", "subagent")
     import connectors as C
     mcp_schemas, mcp_index = C.list_tools(load_connectors())
     schemas = list(tools.SCHEMAS) + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + mcp_schemas
@@ -677,12 +739,13 @@ VM = {
 @app.get("/api/vm")
 def api_vm():
     agents = []
+    doing = _doing_set()
     for s in load_subagents():
         vm = s.get("vm") or {}
-        en = s.get("enabled", True)
+        rt = agent_runtime(s, doing)          # active | paused | disabled
         agents.append({"name": s["name"], "stream": vm.get("stream", ""),
-                       "enabled": en,
-                       "status": vm.get("status", "idle") if en else "disabled"})
+                       "enabled": s.get("enabled", True), "runtime": rt,
+                       "status": rt})
     return jsonify({**VM, "name": "main", "parent": True,
                     "system": system_load(), "agents": agents})
 

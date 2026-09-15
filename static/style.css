@@ -490,3 +490,8 @@ button{font-family:inherit}
 .mtr-note{font-size:10.5px;color:var(--paper-dim);margin-top:2px}
 .vm-screen.off{opacity:.5;filter:grayscale(.5)}
 .vm-screen.off .vm-tag{background:rgba(221,107,107,.14);border-color:rgba(221,107,107,.3);color:#a34}
+
+/* ============ v6: paused machine (distinct from disabled) ============ */
+.vm-screen.paused{opacity:.72}
+.vm-screen.paused .vm-tag{background:rgba(127,178,230,.16);border-color:rgba(127,178,230,.35);color:#3a6ea5}
+.vm-screen.paused .vm-live i{background:var(--azure);box-shadow:0 0 0 4px rgba(127,178,230,.16);animation:none}
