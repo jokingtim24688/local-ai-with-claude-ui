@@ -16,6 +16,14 @@ motion. A top-right toggle flips between three views:
 Our own native app — **no Electron**. A pure-Python launcher (`pywebview`) opens
 a native window; everything is ours to brand.
 
+## Install (pick one)
+
+- **One command, from source** — `install.bat` (Windows) or `./install.sh`
+  (mac/Linux). Sets up a venv, checks Ollama, pulls a default model, launches.
+- **A real installer** — build once (`python build.py`) then make a Setup wizard:
+  Windows `installer/AiHeaven.iss` (Inno Setup) → `AiHeaven-Setup.exe`; macOS
+  `installer/build_dmg.sh` → `Ai Heaven.dmg`. See `installer/README.md`.
+
 ## Get the app (one double-click, no Python)
 
 Build the standalone app once, then just run it:
