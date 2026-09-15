@@ -27,12 +27,12 @@ python build.py            # or: build.bat (Windows) / ./build.sh (mac/Linux)
 
 Result in `dist/`:
 
-- **Windows** → `dist/Elysium.exe`
-- **macOS** → `dist/Elysium.app`
-- **Linux** → `dist/Elysium`
+- **Windows** → `dist/Ai Heaven.exe`
+- **macOS** → `dist/Ai Heaven.app`
+- **Linux** → `dist/Ai Heaven`
 
 Ship/keep that one item. It needs no Python install. It creates an
-`Elysium-data/` folder next to itself for `workspace/`, `skills/`, and memory.
+`AiHeaven-data/` folder next to itself for `workspace/`, `skills/`, and memory.
 (A platform webview runtime is used: WebView2 on Windows — usually preinstalled;
 WebKitGTK on Linux; WKWebView on macOS — built in.)
 
@@ -78,8 +78,8 @@ app.py             Flask: branding, models, chat SSE, tool loop, tree, VM, appro
 tools.py           tool registry + sandbox jail
 web.py             web_search / web_fetch (only on /web turns)
 static/            index.html, style.css, app.js  (the UI)
-skills/            <name>/SKILL.md  (seeded into Elysium-data on first run)
-workspace/         dev sandbox (packaged app uses Elysium-data/workspace)
+skills/            <name>/SKILL.md  (seeded into AiHeaven-data on first run)
+workspace/         dev sandbox (packaged app uses AiHeaven-data/workspace)
 ```
 
 ## VM stream

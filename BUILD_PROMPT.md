@@ -1,21 +1,21 @@
 # BUILD PROMPT — give this to a fresh chat to recreate + install the AI
 
 Copy everything below the line into a new coding chat. It fully specifies the
-app, the local AI engine, the skills, and the VM stream. It builds a **desktop
-app** (Electron) that manages a local Ollama AI — no terminal panel for the
-user.
+app, the local AI engine, the skills, and the VM stream. It builds a **native
+desktop app** (pywebview, no Electron) that manages a local Ollama AI — no
+terminal panel for the user.
 
 ---
 
 ## What to build
 
-A macOS/Windows/Linux **native desktop app** (our own, **not Electron**) called
-**Local AI**. Use a pure-Python launcher (`pywebview`) that opens a native
+A Windows + macOS **native desktop app** (our own, **not Electron**) called
+**Ai Heaven**. Use a pure-Python launcher (`pywebview`) that opens a native
 window and hosts the Flask UI in-process — no Node, no browser chrome. Every
 brand detail (name, logo, accent color, window size) lives in `branding.json`
 and is applied live; nothing brand-related is hardcoded. It manages a local
 coding agent that runs on **Ollama** (any pulled model). The app must look
-hand-built, not AI-generated: warm dark theme with a clay/coral accent (NOT
+hand-built, not AI-generated: a heaven theme — luminous dawn-sky background, gold accent (NOT
 purple), **liquid-glass** chrome (`backdrop-filter` blur + translucent fill +
 thin light border + soft shadow), **pill-shaped** buttons, spring-eased
 micro-interactions, one orchestrated load reveal, and a subtle grain overlay.
@@ -50,9 +50,13 @@ skills/<name>/SKILL.md   loadable skills (name+desc in prompt, body on demand)
 workspace/           default sandbox — the AI is confined here
 ```
 
-Electron loads `http://127.0.0.1:5173` (the Flask app) inside a frameless
-window, so it presents as a real app. The Python backend bridges the browser
-to the Ollama Python lib (the browser can't import it).
+`desktop.py` (pywebview) loads `http://127.0.0.1:5173` (the Flask app) inside a
+native window, so it presents as a real app. The Python backend bridges the
+browser to the Ollama Python lib (the browser can't import it). There is also a
+Claude-desktop-style **left sidebar** (chat history + New chat + search +
+collapsible Skills/Memory/status) and a centered **home greeting** that gives
+way to the thread once a conversation starts. Conversations persist in
+`localStorage` (`aiheaven.convos`).
 
 ### Backend endpoints (Flask, `app.py`)
 
@@ -92,21 +96,23 @@ a system prompt cannot remove training baked into weights.
 
 ## Design spec (make it look human-made)
 
-- Palette: `--ink #16130f`, text `--paper #efe7db`, accent `--clay #d9795b`.
-  No purple/violet anywhere.
-- Glass recipe on floating chrome only (topbar, rail, composer, panes, modal,
-  VM stage): `backdrop-filter:blur(20px) saturate(140%)`,
-  `background:rgba(38,33,27,.55)`, `border:1px solid rgba(239,231,219,.16)`,
-  `box-shadow:0 10px 40px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,246,236,.06)`.
-  Body-text surfaces stay solid for contrast. Provide a `@supports not
-  (backdrop-filter)` fallback.
+- Heaven palette (light): text `--ink #33384a`, accent `--clay #c99a3a` /
+  `--clay-soft #eac86f`, sky-white ground. NO purple/violet anywhere. Background
+  is a luminous dawn gradient with drifting clouds + faint god-rays.
+- Glass recipe on floating chrome only (sidebar, composer, panes, modal, VM
+  stage): `backdrop-filter:blur(22px) saturate(150%)`,
+  `background:rgba(255,255,255,.52)`, `border:1px solid rgba(255,255,255,.85)`,
+  soft `box-shadow`. Body-text surfaces stay solid white for contrast. Provide a
+  `@supports not (backdrop-filter)` fallback.
 - Pills: gradient clay fill, inset top highlight, `:active{scale(.95)}`, spring
   easing `cubic-bezier(.2,.9,.25,1.15)`.
 - Motion: staggered load reveal (topbar → rail → stage); messages fade-up;
   tool chips have a pulsing dot; view switch cross-fades + slides; blinking
   caret while streaming. One grain overlay via inline `feTurbulence`.
-- Serif wordmark, sans body. Real empty-state copy ("What are we building?"),
-  not "No items yet".
+- Serif wordmark + serif home greeting (time-based, e.g. "Good evening. What
+  shall we create?"), sans body. Composer is a rounded card with inline controls
+  (model pill + Tools / Web toggle chips + a round ↑ send button). Real copy, not
+  "No items yet".
 
 ## Skills (ship these; the app loads any `skills/<name>/SKILL.md`)
 
@@ -142,12 +148,12 @@ Ship it as a real standalone app, not loose scripts. Package `desktop.py` with
 ```bash
 pip install -r requirements.txt pyinstaller
 python build.py            # runs: pyinstaller --noconfirm elysium.spec
-# dist/Elysium.exe  (Windows) | dist/Elysium.app (macOS) | dist/Elysium (Linux)
+# dist/Ai Heaven.exe  (Windows) | dist/Ai Heaven.app (macOS)
 ```
 
 The spec bundles `static/`, `assets/`, `branding.json`, and default `skills/`
 as read-only resources (served from `sys._MEIPASS`). Use a `paths.py` that
-resolves bundled resources vs. a writable `Elysium-data/` folder created next
+resolves bundled resources vs. a writable `AiHeaven-data/` folder created next
 to the executable for `workspace/`, `skills/` (seeded from the bundle on first
 run), and `MEMORY.md`. `desktop.py` starts Flask in a background thread on a
 free port and opens a native `pywebview` window titled from `branding.json`;

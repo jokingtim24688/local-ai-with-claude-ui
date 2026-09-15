@@ -4,33 +4,77 @@ const chat = $("#chat");
 const input = $("#input");
 const modelSel = $("#model");
 const activity = $("#activity");
+const chatView = $("#chat-view");
 
-let messages = [];
-let busy = false;
+const state = { convos: [], cur: null, tools: true, web: false, busy: false };
+const KEY = "aiheaven.convos";
 
 init();
 async function init() {
-  showEmpty();
+  loadConvos();
+  wireSidebar();
   wireViews();
   wireComposer();
   wireVM();
-  $("#clear").onclick = () => { messages = []; showEmpty(); };
   $("#reload-mem").onclick = loadMemory;
   $("#reload-tree").onclick = loadTree;
+  setGreeting();
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory()]);
   loadTree(); loadVM();
 }
 
-async function loadBranding() {
-  try {
-    const b = await (await fetch("/api/branding")).json();
-    if (b.name) { $("#brand-name").textContent = b.name; document.title = b.name; }
-    if (b.logo) $("#logo").src = "/" + b.logo.replace(/^\//, "");
-    const r = document.documentElement.style;
-    if (b.accent) r.setProperty("--clay", b.accent);
-    if (b.accent_soft) r.setProperty("--clay-soft", b.accent_soft);
-    if (b.tagline) $("#status").setAttribute("title", b.tagline);
-  } catch {}
+/* ---------- conversations ---------- */
+function loadConvos() {
+  try { state.convos = JSON.parse(localStorage.getItem(KEY)) || []; } catch { state.convos = []; }
+  if (state.convos.length) selectConvo(state.convos[0].id);
+  else newChat();
+  renderHistory();
+}
+function saveConvos() {
+  try { localStorage.setItem(KEY, JSON.stringify(state.convos.slice(0, 50))); } catch {}
+}
+function curConvo() { return state.convos.find((c) => c.id === state.cur); }
+function newChat() {
+  const c = { id: Date.now().toString(36), title: "New chat", messages: [] };
+  state.convos.unshift(c);
+  selectConvo(c.id);
+  renderHistory();
+}
+function selectConvo(id) {
+  state.cur = id;
+  renderThread();
+  renderHistory();
+}
+function renderHistory(filter = "") {
+  const ul = $("#history");
+  const f = filter.toLowerCase();
+  const list = state.convos.filter((c) => c.title.toLowerCase().includes(f));
+  if (!list.length) { ul.innerHTML = `<li class="empty-note">no chats yet</li>`; return; }
+  ul.innerHTML = list.map((c) =>
+    `<li data-id="${c.id}" class="${c.id === state.cur ? "active" : ""}">${esc(c.title)}</li>`).join("");
+  $$("#history li[data-id]").forEach((li) => (li.onclick = () => selectConvo(li.dataset.id)));
+}
+function renderThread() {
+  const c = curConvo();
+  chat.innerHTML = "";
+  (c?.messages || []).forEach((m) => {
+    if (m.role === "user" || m.role === "assistant") addMsg(m.role, m.content);
+  });
+  setChatting((c?.messages || []).length > 0);
+}
+function setChatting(on) { chatView.classList.toggle("home", !on); }
+
+/* ---------- sidebar ---------- */
+function wireSidebar() {
+  $("#clear").onclick = newChat;
+  $("#side-collapse").onclick = () => $("#shell").classList.add("collapsed");
+  $("#side-open").onclick = () => $("#shell").classList.remove("collapsed");
+  $("#search").addEventListener("input", (e) => renderHistory(e.target.value));
+}
+function setGreeting() {
+  const h = new Date().getHours();
+  const t = h < 5 ? "Still awake?" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  $("#greeting").textContent = t + ". What shall we create?";
 }
 
 /* ---------- views ---------- */
@@ -54,6 +98,16 @@ function wireViews() {
 }
 
 /* ---------- loaders ---------- */
+async function loadBranding() {
+  try {
+    const b = await (await fetch("/api/branding")).json();
+    if (b.name) { $("#brand-name").textContent = b.name; document.title = b.name; }
+    if (b.logo) $("#logo").src = "/" + b.logo.replace(/^\//, "");
+    const r = document.documentElement.style;
+    if (b.accent) r.setProperty("--clay", b.accent);
+    if (b.accent_soft) r.setProperty("--clay-soft", b.accent_soft);
+  } catch {}
+}
 async function loadConfig() {
   try {
     const c = await (await fetch("/api/config")).json();
@@ -62,10 +116,7 @@ async function loadConfig() {
     st.classList.toggle("up", !!c.ollama);
     st.classList.toggle("down", !c.ollama);
     st.lastChild.textContent = c.ollama ? "ollama online" : "ollama offline";
-  } catch { setDown(); }
-}
-function setDown() {
-  const st = $("#status"); st.classList.add("down"); st.lastChild.textContent = "offline";
+  } catch { const st = $("#status"); st.classList.add("down"); st.lastChild.textContent = "offline"; }
 }
 async function loadModels() {
   try {
@@ -95,15 +146,13 @@ async function loadTree() {
   try {
     const d = await (await fetch("/api/tree")).json();
     $("#tree").innerHTML = renderTree(d.tree, 0);
-    $$("#tree li[data-file]").forEach((li) =>
-      (li.onclick = () => openFile(li.dataset.file, li)));
+    $$("#tree li[data-file]").forEach((li) => (li.onclick = () => openFile(li.dataset.file, li)));
   } catch {}
 }
 function renderTree(nodes, depth) {
   return nodes.map((n) => {
     const pad = depth ? ' class="kid"' : "";
-    if (n.dir)
-      return `<li${pad} class="dir">▸ ${esc(n.name)}</li>` + renderTree(n.children, depth + 1);
+    if (n.dir) return `<li${pad} class="dir">▸ ${esc(n.name)}</li>` + renderTree(n.children, depth + 1);
     return `<li${pad} data-file="${esc(n.path)}">${esc(n.name)}</li>`;
   }).join("");
 }
@@ -131,9 +180,7 @@ function wireVM() {
     b.disabled = false;
   }));
 }
-async function loadVM() {
-  try { paintVM(await (await fetch("/api/vm")).json()); } catch {}
-}
+async function loadVM() { try { paintVM(await (await fetch("/api/vm")).json()); } catch {} }
 function paintVM(d) {
   $("#vm-status").textContent = "status: " + (d.status || "unknown");
   const img = $("#vm-stream");
@@ -141,7 +188,7 @@ function paintVM(d) {
   if (d.app_url) $("#vm-app").innerHTML = `<iframe src="${esc(d.app_url)}" style="width:100%;height:100%;border:0;border-radius:12px"></iframe>`;
 }
 
-/* ---------- chat ---------- */
+/* ---------- composer ---------- */
 function wireComposer() {
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(); });
   input.addEventListener("keydown", (e) => {
@@ -150,36 +197,28 @@ function wireComposer() {
   input.addEventListener("input", () => {
     input.style.height = "auto"; input.style.height = input.scrollHeight + "px";
   });
+  $("#tools-chip").onclick = (e) => { state.tools = !state.tools; e.target.classList.toggle("on", state.tools); };
+  $("#web-chip").onclick = (e) => { state.web = !state.web; e.target.classList.toggle("on", state.web); };
 }
 function esc(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 }
-function showEmpty() {
-  chat.innerHTML = `<div class="empty"><div class="mark"></div>
-    <h2>Speak it into being</h2>
-    <p>Pick a model above and describe what you want. The AI writes, runs, and tests inside its sandbox — watch it work in Code, or in the VM stream.</p></div>`;
-}
-function clearEmpty() { chat.querySelector(".empty")?.remove(); }
 function bottom() { chat.scrollTop = chat.scrollHeight; }
 
 function addMsg(role, text) {
-  clearEmpty();
   const d = document.createElement("div");
   d.className = `msg ${role}`;
-  d.innerHTML = `<div class="who">${role === "user" ? "you" : "local ai"}</div><div class="body"></div>`;
+  d.innerHTML = `<div class="who">${role === "user" ? "you" : "ai heaven"}</div><div class="body"></div>`;
   d.querySelector(".body").textContent = text;
   chat.appendChild(d); bottom();
   return d.querySelector(".body");
 }
 function addTool(name, args) {
-  clearEmpty();
-  const a = Object.entries(args || {})
-    .map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 70)}`).join(", ");
+  const a = Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(v).slice(0, 70)}`).join(", ");
   const d = document.createElement("div");
   d.className = "tool";
   d.innerHTML = `<div class="call">${esc(name)}(${esc(a)})</div>`;
   chat.appendChild(d); bottom();
-  // mirror into code-view activity feed
   const li = document.createElement("li");
   li.innerHTML = `<div class="a-tool">${esc(name)}</div>`;
   activity.prepend(li);
@@ -199,25 +238,30 @@ function addToolResult(ref, result) {
 }
 
 async function send() {
-  if (busy) return;
+  if (state.busy) return;
   let text = input.value.trim();
   if (!text) return;
-  let web = false;
+  let web = state.web;
   if (text.startsWith("/web")) { web = true; text = text.slice(4).trim(); }
+
+  const c = curConvo();
+  if (c.messages.length === 0) { c.title = text.slice(0, 40); renderHistory($("#search").value); }
+  setChatting(true);
   addMsg("user", text);
-  messages.push({ role: "user", content: text });
+  c.messages.push({ role: "user", content: text });
   input.value = ""; input.style.height = "auto";
+  saveConvos();
   setBusy(true);
-  try { await streamChat(web); }
-  catch (e) { addMsg("assistant", "error: " + e.message); }
-  setBusy(false); loadMemory();
+  try { await streamChat(web); } catch (e) { addMsg("assistant", "error: " + e.message); }
+  setBusy(false); saveConvos(); loadMemory();
 }
-function setBusy(b) { busy = b; $("#send").disabled = b; }
+function setBusy(b) { state.busy = b; $("#send").disabled = b; }
 
 async function streamChat(web) {
+  const c = curConvo();
   const res = await fetch("/api/chat", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: modelSel.value, messages, web, tools: true, ask: true }),
+    body: JSON.stringify({ model: modelSel.value, messages: c.messages, web, tools: state.tools, ask: true }),
   });
   const reader = res.body.getReader();
   const dec = new TextDecoder();
@@ -247,7 +291,7 @@ async function streamChat(web) {
         addMsg("assistant", "error: " + data);
       } else if (ev === "done") {
         bodyEl?.classList.remove("caret");
-        if (acc) messages.push({ role: "assistant", content: acc });
+        if (acc) c.messages.push({ role: "assistant", content: acc });
       }
     }
   }

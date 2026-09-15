@@ -3,110 +3,136 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Local AI</title>
+<title>Ai Heaven</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<!-- filters: grain + liquid edge distortion (one hero moment only) -->
 <svg width="0" height="0" style="position:absolute">
   <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
     <feColorMatrix type="saturate" values="0"/></filter>
-  <filter id="liquid"><feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="2" result="n"/>
-    <feDisplacementMap in="SourceGraphic" in2="n" scale="9"/></filter>
 </svg>
 <div class="glow"></div>
 <div class="grain"></div>
 
-<header class="topbar reveal" style="--i:0">
-  <div class="wordmark">
-    <img class="logo" id="logo" alt="" src="/assets/logo.svg">
-    <span class="name" id="brand-name">Local&thinsp;AI</span>
-    <span class="status" id="status" title="ollama"><i></i>connecting</span>
-  </div>
-
-  <div class="model-pill">
-    <span class="glyph"></span>
-    <select id="model" aria-label="model"></select>
-  </div>
-
-  <nav class="segmented" id="views">
-    <span class="thumb" id="thumb"></span>
-    <button data-view="chat" class="on">Chat</button>
-    <button data-view="code">Code</button>
-    <button data-view="vm">VM</button>
-  </nav>
-</header>
-
-<div class="layout">
-  <aside class="rail glass reveal" style="--i:1">
-    <div class="rail-group">
-      <div class="rail-head">Skills</div>
-      <ul id="skills" class="skills"></ul>
+<div class="shell" id="shell">
+  <!-- SIDEBAR (Claude-style) -->
+  <aside class="sidebar glass reveal" id="sidebar" style="--i:0">
+    <div class="side-top">
+      <img class="logo" id="logo" alt="" src="/assets/logo.svg">
+      <span class="name" id="brand-name">Ai Heaven</span>
+      <button class="icon-btn side-collapse" id="side-collapse" title="collapse">‹</button>
     </div>
-    <div class="rail-group grow">
-      <div class="rail-head">Memory <button id="reload-mem" class="mini">refresh</button></div>
-      <pre id="memory" class="memory">nothing remembered yet</pre>
+
+    <button id="clear" class="new-chat"><span class="plus">+</span> New chat</button>
+
+    <div class="search"><input id="search" placeholder="Search chats…" autocomplete="off"></div>
+
+    <div class="recents">
+      <div class="side-label">Recents</div>
+      <ul id="history" class="history"></ul>
     </div>
-    <div class="rail-group">
-      <div class="rail-head">Sandbox</div>
-      <code id="workdir" class="workdir">—</code>
+
+    <div class="workspace">
+      <details open>
+        <summary>Skills</summary>
+        <ul id="skills" class="skills"></ul>
+      </details>
+      <details>
+        <summary>Memory <button id="reload-mem" class="mini">refresh</button></summary>
+        <pre id="memory" class="memory">nothing remembered yet</pre>
+      </details>
+      <div class="side-foot">
+        <span class="status" id="status"><i></i>connecting</span>
+        <code id="workdir" class="workdir">—</code>
+      </div>
     </div>
-    <button id="clear" class="pill ghost block">New chat</button>
   </aside>
 
-  <main class="stage reveal" style="--i:2">
-    <!-- CHAT -->
-    <section class="view on" data-view="chat">
-      <div id="chat" class="chat"></div>
-      <form id="composer" class="composer glass">
-        <textarea id="input" rows="1" placeholder="Ask it to build something. Prefix /web to allow the web this turn."></textarea>
-        <button id="send" class="pill send" type="submit"><span>Send</span></button>
-      </form>
-    </section>
+  <!-- MAIN -->
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="side-open" title="menu">☰</button>
+      <nav class="segmented" id="views">
+        <span class="thumb" id="thumb"></span>
+        <button data-view="chat" class="on">Chat</button>
+        <button data-view="code">Code</button>
+        <button data-view="vm">VM</button>
+      </nav>
+    </header>
 
-    <!-- CODE -->
-    <section class="view" data-view="code">
-      <div class="code-grid">
-        <div class="tree glass">
-          <div class="pane-head">Files <button id="reload-tree" class="mini">refresh</button></div>
-          <ul id="tree" class="tree-list"></ul>
+    <div class="stage">
+      <!-- CHAT -->
+      <section class="view on home" data-view="chat" id="chat-view">
+        <div class="thread">
+          <div class="hero" id="hero">
+            <div class="mark"></div>
+            <h1 id="greeting">Where shall we begin?</h1>
+          </div>
+          <div id="chat" class="chat"></div>
         </div>
-        <div class="editor">
-          <div class="pane-head"><span id="editor-path">select a file</span></div>
-          <pre id="editor-body" class="editor-body"><code>&nbsp;</code></pre>
-        </div>
-        <div class="activity glass">
-          <div class="pane-head">Live activity</div>
-          <ul id="activity" class="activity-list"></ul>
-        </div>
-      </div>
-    </section>
 
-    <!-- VM -->
-    <section class="view" data-view="vm">
-      <div class="vm-wrap">
-        <div class="vm-stage glass">
-          <div class="vm-screen" id="vm-screen">
-            <img id="vm-stream" alt="" />
-            <div class="vm-overlay" id="vm-overlay">
-              <span class="vm-live"><i></i>VM stream</span>
-              <p id="vm-hint">No stream configured. Set VM_STREAM to your VM's VNC / MJPEG feed.</p>
+        <div class="composer-wrap">
+          <form id="composer" class="composer glass">
+            <textarea id="input" rows="1" placeholder="Ask Elysium to build something…"></textarea>
+            <div class="composer-bar">
+              <div class="model-pill">
+                <span class="glyph"></span>
+                <select id="model" aria-label="model"></select>
+              </div>
+              <button type="button" class="chip on" id="tools-chip" title="let it use tools">Tools</button>
+              <button type="button" class="chip" id="web-chip" title="allow web this chat">Web</button>
+              <span class="spacer"></span>
+              <button id="send" class="send-btn" type="submit" title="send">↑</button>
+            </div>
+          </form>
+          <p class="disclaimer">Runs locally on your Ollama models. It can read &amp; write only inside its sandbox.</p>
+        </div>
+      </section>
+
+      <!-- CODE -->
+      <section class="view" data-view="code">
+        <div class="code-grid">
+          <div class="tree glass">
+            <div class="pane-head">Files <button id="reload-tree" class="mini">refresh</button></div>
+            <ul id="tree" class="tree-list"></ul>
+          </div>
+          <div class="editor">
+            <div class="pane-head"><span id="editor-path">select a file</span></div>
+            <pre id="editor-body" class="editor-body"><code>&nbsp;</code></pre>
+          </div>
+          <div class="activity glass">
+            <div class="pane-head">Live activity</div>
+            <ul id="activity" class="activity-list"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- VM -->
+      <section class="view" data-view="vm">
+        <div class="vm-wrap">
+          <div class="vm-stage glass">
+            <div class="vm-screen" id="vm-screen">
+              <img id="vm-stream" alt="" />
+              <div class="vm-overlay" id="vm-overlay">
+                <span class="vm-live"><i></i>VM stream</span>
+                <p id="vm-hint">No stream configured. Set VM_STREAM to your VM's VNC / MJPEG feed.</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="vm-side glass">
-          <div class="pane-head">Machine</div>
-          <p class="vm-status" id="vm-status">status: unknown</p>
-          <div class="vm-actions">
-            <button class="pill" data-vm="start">Start VM</button>
-            <button class="pill" data-vm="launch">Launch app</button>
-            <button class="pill ghost" data-vm="stop">Stop</button>
+          <div class="vm-side glass">
+            <div class="pane-head">Machine</div>
+            <p class="vm-status" id="vm-status">status: unknown</p>
+            <div class="vm-actions">
+              <button class="pill" data-vm="start">Start VM</button>
+              <button class="pill" data-vm="launch">Launch app</button>
+              <button class="pill ghost" data-vm="stop">Stop</button>
+            </div>
+            <div class="pane-head" style="margin-top:18px">App preview</div>
+            <div class="vm-app" id="vm-app"><span>app appears here when launched</span></div>
           </div>
-          <div class="pane-head" style="margin-top:18px">App preview</div>
-          <div class="vm-app" id="vm-app"><span>app appears here when launched</span></div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
   </main>
 </div>
 

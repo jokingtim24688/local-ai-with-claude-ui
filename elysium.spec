@@ -1,9 +1,15 @@
-# PyInstaller spec — builds Elysium into one standalone app.
+# PyInstaller spec — builds "Ai Heaven" into one standalone app.
+# The build auto-detects the OS it runs on:
+#   run it on Windows -> dist/Ai Heaven.exe
+#   run it on macOS   -> dist/Ai Heaven.app
+# (A single file can't run on both OSes — different binary formats — so build
+#  once per OS. Each build produces the right app automatically.)
 #   pip install pyinstaller
 #   pyinstaller elysium.spec
-# Output: dist/Elysium  (double-click; no Python needed)
 import sys
 from PyInstaller.utils.hooks import collect_submodules
+
+APP = "Ai Heaven"
 
 block_cipher = None
 
@@ -37,24 +43,30 @@ a = Analysis(
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+import os
+_ico = "assets/icon.ico" if sys.platform == "win32" else None
+if _ico and not os.path.exists(_ico):
+    _ico = None
+
 exe = EXE(
     pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
-    name="Elysium",
+    name=APP,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     runtime_tmpdir=None,
     console=False,               # no terminal window
-    icon="assets/icon.ico" if sys.platform == "win32" else None,
+    icon=_ico,
 )
 
 # macOS: wrap into a proper .app bundle
 if sys.platform == "darwin":
+    _icns = "assets/icon.icns" if os.path.exists("assets/icon.icns") else None
     app = BUNDLE(
         exe,
-        name="Elysium.app",
-        icon="assets/icon.icns",
-        bundle_identifier="ai.local.elysium",
+        name=f"{APP}.app",
+        icon=_icns,
+        bundle_identifier="ai.heaven.app",
         info_plist={"NSHighResolutionCapable": True},
     )

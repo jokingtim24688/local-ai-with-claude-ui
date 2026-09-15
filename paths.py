@@ -18,7 +18,7 @@ FROZEN = getattr(sys, "frozen", False)
 
 RES_DIR = getattr(sys, "_MEIPASS", HERE)
 
-APP_NAME = "Elysium"
+APP_NAME = "AiHeaven"
 
 
 def _writable(d: str) -> bool:

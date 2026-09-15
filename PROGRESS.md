@@ -12,10 +12,22 @@ Branch: `claude/amazing-keller-dvibe7`. Repo: jokingtim24688/local-ai-with-claud
 - Do NOT reply to self / acknowledge loops.
 - Save progress every 5 min to this file with redo instructions.
 
+## PIVOT 4: Claude-desktop layout + rename "Ai Heaven"
+- New shell: left sidebar (chat history via localStorage `aiheaven.convos`,
+  New chat, search, collapsible Skills/Memory/status), centered home greeting,
+  composer card with model pill + Tools/Web chips + round ↑ send. Views segmented
+  top-right. index.html + style.css + app.js rewritten; heaven skin kept.
+- App name = "Ai Heaven" (branding.json). paths APP_NAME=AiHeaven -> AiHeaven-data.
+- spec builds "Ai Heaven.exe"/"Ai Heaven.app", auto-detects OS (win/mac only).
+- HANDOFF.md written for the second chat (API contracts, structure, agreement).
+- STANDING RULE: regenerate preview_chat.png + preview_code.png after any big
+  visual change (or every 3rd change). Rendered via headless chromium at
+  /opt/pw-browsers, previews built in scratchpad from real style.css.
+
 ## PIVOT 3: real standalone app (no running .py)
 - PyInstaller: elysium.spec + build.py + build.bat/build.sh -> dist/Elysium(.exe/.app).
 - paths.py: RES_DIR (sys._MEIPASS bundled static/assets/branding/skills) vs
-  DATA_DIR (Elysium-data next to exe: workspace, skills seeded, MEMORY).
+  DATA_DIR (AiHeaven-data next to exe: workspace, skills seeded, MEMORY).
 - app.py uses paths.res/paths.data; branding+assets allow user override next to app.
 - desktop.py = entry, seeds data, picks free port, opens pywebview window.
 - Needs Ollama installed + platform webview runtime. gitignore build/ dist/ data.
