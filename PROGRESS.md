@@ -168,3 +168,12 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   (grant_skill_to_all), so the pool keeps it and nobody remakes it. Parent-only tool.
 - Pool model swapped dolphin3:8b -> hermes3:8b (POOL_MODEL): smarter + best tool-
   calling, lightly aligned, ~same RAM. Per-agent model still overridable.
+
+## PIVOT 12: Terminal mode + git changes + push targets
+- 4th view in the top-right dropdown: Terminal (simple mono console; shares the
+  conversation, renders plain lines). wireTerminal/termSend in app.js.
+- File changes: /api/git/status + /api/git/diff; Changes panel shows live diff.
+- Targets (targets.json): /api/targets CRUD; picker in terminal bar. Type repo
+  (git url+branch) or file (path). /api/git/push does add/commit/push to the repo
+  target (git init if needed; creds via user's git helper / token-in-url).
+- Image: preview_terminal.png.

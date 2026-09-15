@@ -15,7 +15,7 @@ const state = {
 init();
 async function init() {
   load();
-  wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors();
+  wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors(); wireTerminal();
   setGreeting();
   document.addEventListener("click", () => { hideMenu(); $("#view-menu").classList.add("hidden"); });
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
@@ -154,6 +154,95 @@ function selectView(v) {
   $("#view-current").textContent = labels[v];
   document.documentElement.dataset.view = v;
   if (v === "code") loadTree(); if (v === "vm") loadVM();
+  if (v === "terminal") { loadTargets(); loadChanges(); setTimeout(() => $("#term-in").focus(), 60); }
+}
+
+/* ---------- terminal mode ---------- */
+function wireTerminal() {
+  $("#term-form").addEventListener("submit", (e) => { e.preventDefault(); termSend(); });
+  $("#term-changes-btn").onclick = () => { $("#term-changes").classList.toggle("hidden"); loadChanges(); };
+  $("#term-push").onclick = termPush;
+  $("#term-manage").onclick = addTarget;
+}
+function termOut() { return $("#term-out"); }
+function termLine(text, cls) {
+  const d = document.createElement("div");
+  d.className = "tl " + (cls || "");
+  d.textContent = text;
+  termOut().appendChild(d); termOut().scrollTop = termOut().scrollHeight;
+  return d;
+}
+async function loadTargets() {
+  try {
+    const d = await (await fetch("/api/targets")).json();
+    const sel = $("#term-target");
+    sel.innerHTML = d.targets.length
+      ? d.targets.map((t) => `<option value="${t.id}">${t.type === "repo" ? "⎇" : "📄"} ${esc(t.name)}</option>`).join("")
+      : `<option value="">no target — click + target</option>`;
+  } catch {}
+}
+async function addTarget() {
+  const type = (prompt("Target type: repo or file", "repo") || "").trim();
+  if (type !== "repo" && type !== "file") return;
+  const name = prompt("Name")?.trim(); if (!name) return;
+  const body = { type, name };
+  if (type === "repo") { body.url = prompt("Git URL (https://…​.git — token in URL if private)")?.trim() || ""; body.branch = prompt("Branch", "main")?.trim() || "main"; }
+  else { body.path = prompt("File path (inside sandbox)")?.trim() || ""; }
+  await fetch("/api/targets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  loadTargets();
+}
+async function loadChanges() {
+  try {
+    const s = await (await fetch("/api/git/status")).json();
+    const d = await (await fetch("/api/git/diff")).json();
+    const head = s.repo ? `on ${esc(s.branch || "?")} — ${s.files.length} changed\n` +
+      s.files.map((f) => `  ${f.status.padEnd(2)} ${esc(f.path)}`).join("\n")
+      : "not a git repo yet (Push will init one)";
+    $("#term-changes").textContent = head + (d.diff ? "\n\n" + d.diff : "");
+  } catch {}
+}
+async function termPush() {
+  const tid = $("#term-target").value;
+  if (!tid) { termLine("no target selected — click + target", "err"); return; }
+  const msg = prompt("Commit message", "update from Ai Heaven") || "update from Ai Heaven";
+  termLine("$ push → " + $("#term-target").selectedOptions[0].textContent, "u");
+  try {
+    const r = await (await fetch("/api/git/push", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_id: tid, message: msg }) })).json();
+    termLine(r.log || (r.ok ? "pushed" : "failed"), r.ok ? "ok" : "err");
+  } catch (e) { termLine("push error: " + e.message, "err"); }
+  loadChanges();
+}
+async function termSend() {
+  if (state.busy) return;
+  let text = $("#term-in").value.trim(); if (!text) return;
+  let web = state.web; if (text.startsWith("/web")) { web = true; text = text.slice(4).trim(); }
+  const c = curConvo();
+  termLine("$ " + text, "u"); c.messages.push({ role: "user", content: text });
+  $("#term-in").value = ""; save(); setBusy(true);
+  const msgs = [...c.messages]; if (state.instructions) msgs.unshift({ role: "system", content: state.instructions });
+  let acc = "", line = null;
+  try {
+    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: !state.auto }) });
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const blocks = buf.split("\n\n"); buf = blocks.pop();
+      for (const block of blocks) {
+        const ev = /event: (.*)/.exec(block)?.[1]; const dl = /data: (.*)/s.exec(block)?.[1];
+        if (!ev) continue; const data = dl ? JSON.parse(dl) : null;
+        if (ev === "token") { if (!line) { line = termLine("", "a"); acc = ""; } acc += data; line.textContent = acc; termOut().scrollTop = termOut().scrollHeight; }
+        else if (ev === "tool_call") { line = null; termLine("→ " + data.name + "(" + Object.keys(data.args || {}).join(",") + ")", "t"); }
+        else if (ev === "tool_result") { termLine(data.result, data.result.startsWith("error") ? "err" : "r"); }
+        else if (ev === "approval") { await handleApproval(data); }
+        else if (ev === "error") { termLine("error: " + data, "err"); }
+        else if (ev === "done") { if (acc) c.messages.push({ role: "assistant", content: acc }); }
+      }
+    }
+  } catch (e) { termLine("error: " + e.message, "err"); }
+  setBusy(false); save(); loadChanges();
 }
 function wireViews() {
   const btn = $("#view-btn"), menu = $("#view-menu");

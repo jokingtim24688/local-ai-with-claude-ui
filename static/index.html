@@ -70,6 +70,10 @@
             <button class="vd-pick"><b>VM</b><span>the machines the agents work on</span></button>
             <button class="vd-gear" data-settings="connectors" title="VM &amp; connectors">⚙</button>
           </div>
+          <div class="vd-row" data-view="terminal">
+            <button class="vd-pick"><b>Terminal</b><span>simple mode · changes · push</span></button>
+            <button class="vd-gear" data-settings="connectors" title="targets">⚙</button>
+          </div>
         </div>
       </div>
     </header>
@@ -120,6 +124,28 @@
             <div class="pane-head">Live activity</div>
             <ul id="activity" class="activity-list"></ul>
           </div>
+        </div>
+      </section>
+
+      <!-- TERMINAL -->
+      <section class="view" data-view="terminal">
+        <div class="term-wrap">
+          <div class="term-bar">
+            <span class="term-title">▹ ai-heaven</span>
+            <select id="term-target" title="push/save target"></select>
+            <button id="term-manage" class="chip">+ target</button>
+            <span class="spacer"></span>
+            <button id="term-changes-btn" class="chip">Changes</button>
+            <button id="term-push" class="pill">Push ↑</button>
+          </div>
+          <div class="term-main">
+            <div id="term-out" class="term-out"></div>
+            <div id="term-changes" class="term-changes hidden"></div>
+          </div>
+          <form id="term-form" class="term-input">
+            <span class="prompt-sign">$</span>
+            <input id="term-in" autocomplete="off" spellcheck="false" placeholder="type a task…">
+          </form>
         </div>
       </section>
 

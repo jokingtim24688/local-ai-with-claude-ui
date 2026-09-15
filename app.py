@@ -647,6 +647,102 @@ def api_tasks_add():
     save_tasks(tk); return jsonify({"ok": True})
 
 
+# ---- git + push/save targets (Terminal mode) ------------------------------
+
+def _git(*args):
+    import subprocess
+    try:
+        r = subprocess.run(["git", *args], cwd=tools.SANDBOX,
+                           capture_output=True, text=True, timeout=90)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except Exception as e:
+        return 1, f"git error: {e}"
+
+
+@app.get("/api/git/status")
+def api_git_status():
+    code, out = _git("status", "--porcelain=v1", "-b")
+    if code != 0:
+        return jsonify({"repo": False, "files": [], "branch": ""})
+    files, branch = [], ""
+    for line in out.splitlines():
+        if line.startswith("##"):
+            branch = line[3:].split("...")[0].strip()
+        elif line.strip():
+            files.append({"status": line[:2].strip(), "path": line[3:]})
+    return jsonify({"repo": True, "files": files, "branch": branch})
+
+
+@app.get("/api/git/diff")
+def api_git_diff():
+    code, out = _git("diff")
+    _, untr = _git("ls-files", "--others", "--exclude-standard")
+    extra = "\n".join(f"?? new file: {p}" for p in untr.splitlines() if p.strip())
+    return jsonify({"diff": (out + ("\n" + extra if extra else "")).strip()})
+
+
+def _targets_path():
+    return paths.data("targets.json")
+
+
+def load_targets():
+    try:
+        with open(_targets_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_targets(items):
+    with open(_targets_path(), "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2)
+
+
+@app.get("/api/targets")
+def api_targets():
+    return jsonify({"targets": load_targets()})
+
+
+@app.post("/api/targets")
+def api_targets_save():
+    b = request.get_json(force=True) or {}
+    items = load_targets()
+    tid = b.get("id") or uuid.uuid4().hex[:8]
+    entry = {"id": tid, "type": b.get("type", "repo"),
+             "name": (b.get("name") or "target").strip(),
+             "url": b.get("url", ""), "path": b.get("path", ""),
+             "branch": b.get("branch", "main")}
+    save_targets([x for x in items if x.get("id") != tid] + [entry])
+    return jsonify({"ok": True, "target": entry})
+
+
+@app.delete("/api/targets/<tid>")
+def api_targets_delete(tid):
+    save_targets([x for x in load_targets() if x.get("id") != tid])
+    return jsonify({"ok": True})
+
+
+@app.post("/api/git/push")
+def api_git_push():
+    b = request.get_json(force=True) or {}
+    t = next((x for x in load_targets() if x["id"] == b.get("target_id")), None)
+    if not t:
+        return jsonify({"ok": False, "log": "pick a target first"})
+    msg = b.get("message") or "update from Ai Heaven"
+    if t["type"] == "file":
+        return jsonify({"ok": True, "log": f"file target '{t['name']}' → tell the agent to write to {t['path']}"})
+    log = []
+    if not os.path.isdir(os.path.join(str(tools.SANDBOX), ".git")):
+        log.append(_git("init")[1])
+    log.append(_git("add", "-A")[1])
+    log.append(_git("commit", "-m", msg)[1])
+    _git("remote", "remove", "origin")
+    log.append(_git("remote", "add", "origin", t["url"])[1])
+    code, out = _git("push", "-u", "origin", f"HEAD:{t.get('branch','main')}")
+    log.append(out)
+    return jsonify({"ok": code == 0, "log": "\n".join(x for x in log if x.strip())})
+
+
 @app.get("/api/bus")
 def api_bus():
     return jsonify({"bus": load_bus()[-100:]})
