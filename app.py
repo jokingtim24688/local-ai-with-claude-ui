@@ -24,6 +24,14 @@ except ImportError:  # keep UI usable even if lib missing
 HERE = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=os.path.join(HERE, "static"), static_url_path="")
 
+
+def load_branding() -> dict:
+    try:
+        with open(os.path.join(HERE, "branding.json"), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"name": "Local AI", "accent": "#d9795b", "accent_soft": "#e39a80"}
+
 # runtime config (set in main)
 CFG = {"workdir": os.path.join(HERE, "workspace"), "skills": os.path.join(HERE, "skills")}
 
@@ -56,6 +64,16 @@ def sse(event: str, data) -> str:
 @app.get("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
+
+
+@app.get("/api/branding")
+def api_branding():
+    return jsonify(load_branding())
+
+
+@app.get("/assets/<path:name>")
+def assets(name):
+    return send_from_directory(os.path.join(HERE, "assets"), name)
 
 
 # ---- config / models / skills ---------------------------------------------

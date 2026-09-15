@@ -13,18 +13,20 @@ motion. A top-right toggle flips between three views:
 > Electron shell wired to Ollama. See `BUILD_PROMPT.md` for the complete spec
 > to recreate it and install the AI + VM in another chat.
 
+Our own native app — **no Electron**. A pure-Python launcher (`pywebview`) opens
+a native window; everything is ours to brand.
+
 ## Run
 
 ```bash
-pip install -r requirements.txt   # flask, ollama
-npm install                       # electron
+pip install -r requirements.txt   # flask, ollama, pywebview
 ollama serve                      # if not running
 ollama pull qwen2.5-coder:7b      # or any coding / uncensored tag
-npm start                         # opens the desktop app
+python desktop.py                 # opens the native app window
 ```
 
-`npm start` → Electron spawns `python app.py` (port 5173, hidden) and opens the
-window. No cmd panel is shown to the user.
+`desktop.py` starts the Flask backend in-process and opens the window. No cmd
+panel is shown to the user. Without `pywebview` it falls back to the browser.
 
 Run the backend alone (browser at http://localhost:5173):
 
@@ -32,12 +34,26 @@ Run the backend alone (browser at http://localhost:5173):
 python app.py --workdir ./workspace --skills ./skills
 ```
 
+## Make it yours
+
+Everything is in **`branding.json`** — no code changes:
+
+```json
+{ "name": "Local AI", "tagline": "...", "accent": "#d9795b",
+  "accent_soft": "#e39a80", "logo": "assets/logo.svg",
+  "window": { "width": 1280, "height": 820 } }
+```
+
+Change the name, swap `assets/logo.svg`, set the accent color. The window title,
+wordmark, logo, and theme all follow it live.
+
 ## Layout
 
 ```
-electron/main.js   spawns backend, opens window
-electron/preload.js
-app.py             Flask: models, chat SSE, tool loop, tree, VM, approval
+desktop.py         native launcher (pywebview) — our own app window
+branding.json      name, logo, accent, window size — fully yours
+assets/logo.svg    swappable logo
+app.py             Flask: branding, models, chat SSE, tool loop, tree, VM, approval
 tools.py           tool registry + sandbox jail
 web.py             web_search / web_fetch (only on /web turns)
 static/            index.html, style.css, app.js  (the UI)

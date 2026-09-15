@@ -9,7 +9,11 @@ user.
 
 ## What to build
 
-A macOS/Windows/Linux **desktop app** called **Local AI**. It manages a local
+A macOS/Windows/Linux **native desktop app** (our own, **not Electron**) called
+**Local AI**. Use a pure-Python launcher (`pywebview`) that opens a native
+window and hosts the Flask UI in-process — no Node, no browser chrome. Every
+brand detail (name, logo, accent color, window size) lives in `branding.json`
+and is applied live; nothing brand-related is hardcoded. It manages a local
 coding agent that runs on **Ollama** (any pulled model). The app must look
 hand-built, not AI-generated: warm dark theme with a clay/coral accent (NOT
 purple), **liquid-glass** chrome (`backdrop-filter` blur + translucent fill +
@@ -35,8 +39,9 @@ top-right toggle — flip between normal chat and watching it code / run.
 ## Architecture
 
 ```
-electron/main.js     spawns the Python backend hidden, opens the app window
-electron/preload.js  contextBridge shim
+desktop.py           native launcher (pywebview): runs Flask in-thread, opens window
+branding.json        name, logo, accent, window size — fully editable, no code
+assets/logo.svg      swappable logo (also window icon)
 app.py               Flask backend: Ollama bridge + tool loop + endpoints
 tools.py             tool registry + sandbox jail (confine every file op)
 web.py               web_search / web_fetch (only on /web turns)
@@ -132,16 +137,15 @@ faking a stream.
 ## Install / run
 
 ```bash
-pip install -r requirements.txt      # flask, ollama
-npm install                          # electron
+pip install -r requirements.txt      # flask, ollama, pywebview
 ollama serve                         # if not already running
 ollama pull qwen2.5-coder:7b         # or any coding / uncensored tag
-npm start                            # launches the desktop app
+python desktop.py                    # launches the native app window
 ```
 
-`npm start` runs `electron .`; Electron spawns `python app.py --workdir
-./workspace --skills ./skills` on port 5173 and opens the window. The user
-never sees a terminal.
+`desktop.py` starts the Flask backend in a background thread on port 5173 and
+opens a native `pywebview` window titled from `branding.json`. The user never
+sees a terminal. Fall back to the browser if `pywebview` is missing.
 
 ## Acceptance
 

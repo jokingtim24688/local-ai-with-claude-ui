@@ -59,6 +59,8 @@ body{
   -webkit-app-region:drag}
 .topbar select,.topbar button,.segmented{-webkit-app-region:no-drag}
 .wordmark{display:flex;align-items:center;gap:11px;padding-left:64px}
+.logo{width:24px;height:24px;flex:none;border-radius:7px;
+  filter:drop-shadow(0 6px 16px rgba(217,121,91,.4))}
 .mark{width:22px;height:22px;border-radius:7px;flex:none;
   background:conic-gradient(from 210deg,var(--clay),var(--clay-soft),#c9603f,var(--clay));
   box-shadow:0 0 0 1px rgba(255,255,255,.14),0 6px 16px rgba(217,121,91,.4);

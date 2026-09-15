@@ -17,8 +17,20 @@ async function init() {
   $("#clear").onclick = () => { messages = []; showEmpty(); };
   $("#reload-mem").onclick = loadMemory;
   $("#reload-tree").onclick = loadTree;
-  await Promise.all([loadConfig(), loadModels(), loadSkills(), loadMemory()]);
+  await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory()]);
   loadTree(); loadVM();
+}
+
+async function loadBranding() {
+  try {
+    const b = await (await fetch("/api/branding")).json();
+    if (b.name) { $("#brand-name").textContent = b.name; document.title = b.name; }
+    if (b.logo) $("#logo").src = "/" + b.logo.replace(/^\//, "");
+    const r = document.documentElement.style;
+    if (b.accent) r.setProperty("--clay", b.accent);
+    if (b.accent_soft) r.setProperty("--clay-soft", b.accent_soft);
+    if (b.tagline) $("#status").setAttribute("title", b.tagline);
+  } catch {}
 }
 
 /* ---------- views ---------- */

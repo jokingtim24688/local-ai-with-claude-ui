@@ -12,6 +12,12 @@ Branch: `claude/amazing-keller-dvibe7`. Repo: jokingtim24688/local-ai-with-claud
 - Do NOT reply to self / acknowledge loops.
 - Save progress every 5 min to this file with redo instructions.
 
+## PIVOT 2: no Electron -> our own native app
+- Dropped electron/, package.json. Use pywebview native window `desktop.py`.
+- Full branding via branding.json (name, logo, accent, window). /api/branding
+  + /assets/<f>. Renderer applies name/logo/accent live. Swap assets/logo.svg.
+- python desktop.py = start Flask in thread + native window. Browser fallback.
+
 ## PIVOT (latest direction)
 NOT a web app. Electron **desktop app** cloning Claude UI.
 - top-right segmented toggle: Chat / Code / VM (the "edit" toggle).
