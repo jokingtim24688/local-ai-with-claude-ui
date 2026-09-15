@@ -163,7 +163,7 @@
 
       <section class="tabpane" data-tab="agents">
         <h3>Subagents</h3>
-        <p class="muted">Named helpers the main agent can delegate a task to with <code>spawn_subagent</code>. Each has its own prompt, model, and skills.</p>
+        <p class="muted">Named helpers the main agent can delegate a task to with <code>spawn_subagent</code>. Each has its own prompt, model, and (optionally) its own VM — and every one gets the <b>full skill library</b> plus shared storage and the agent bus.</p>
         <ul id="subagents" class="agent-cards"></ul>
         <div class="agent-form">
           <input id="sa-name" placeholder="name (e.g. researcher)">

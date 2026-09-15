@@ -411,11 +411,12 @@ button{font-family:inherit}
 /* VM grid */
 .vm-wrap{flex:1;display:grid;grid-template-columns:1fr 280px;gap:14px;min-height:0;padding-top:12px}
 .vm-main{display:flex;flex-direction:column;min-height:0}
-.vm-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
-  grid-auto-rows:minmax(150px,1fr);gap:12px;overflow-y:auto;padding-bottom:4px}
-.vm-screen{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line-strong);
+.vm-grid{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:14px;overflow-y:auto;padding-bottom:4px;align-content:start}
+.vm-screen{position:relative;aspect-ratio:4/3;border-radius:22px;overflow:hidden;
+  border:1px solid var(--line-strong);box-shadow:0 8px 22px rgba(120,140,190,.16),inset 0 1px 0 rgba(255,255,255,.8);
   background:radial-gradient(circle at 50% 35%,#fffaf0,#e6eeff);display:flex;align-items:center;justify-content:center}
-.vm-screen.primary{grid-column:1/-1;min-height:230px}
+.vm-screen.primary{border-color:rgba(201,154,58,.5);box-shadow:0 10px 26px rgba(234,200,111,.3),inset 0 1px 0 rgba(255,255,255,.85)}
 .vm-screen img{width:100%;height:100%;object-fit:contain}
 .vm-tag{position:absolute;top:8px;left:8px;z-index:2;font:600 11px var(--sans);color:#4a3410;
   background:rgba(255,247,224,.85);border:1px solid rgba(201,154,58,.3);padding:3px 9px;border-radius:999px;

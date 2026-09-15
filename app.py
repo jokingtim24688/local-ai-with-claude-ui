@@ -245,6 +245,13 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     """Run a nested tool-loop for one subagent and return its final answer.
     Runs autonomously (no approval modal) but stays inside the sandbox."""
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse."]
+    # every subagent gets the whole skill library: roster in the prompt, full
+    # bodies loadable on demand via load_skill (same as the main agent).
+    roster = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
+    if roster:
+        sys_lines.append("\nSkills available (load full body with load_skill):\n"
+                         + "\n".join(roster))
+    # preload the bodies this subagent is explicitly assigned
     for name in sub.get("skills", []):
         s = tools.SKILLS.get(name)
         if s:
