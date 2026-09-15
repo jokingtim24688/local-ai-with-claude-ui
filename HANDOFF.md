@@ -42,8 +42,29 @@ elysium.spec ← PyInstaller build (auto-detects Windows→.exe / macOS→.app).
   a backend instance per VM, and point `sub.vm.stream` at each VM's feed. The VM
   tab already renders one screen per agent from `/api/vm`.
 
+## Roles + connectors (MCP)
+- **Main agent = the BUILDER.** Default subagents seeded on first run:
+  **designer**, **researcher**, **tester** (`seed_default_subagents()` writes
+  `subagents.json`). Builder delegates design/research/test to them.
+- **Connectors = MCP servers** (the "plugins"), stored in `connectors.json`.
+  `connectors.py` is an MCP client bridge (uses the `mcp` SDK if installed,
+  fail-closed otherwise): `list_tools()` connects to each enabled server,
+  namespaces its tools `mcp__<server>__<tool>`, and appends them to BOTH the
+  main loop and every `run_subagent` loop; `call_tool()` invokes them. MCP calls
+  are gated by the approval modal. UI: Customize → Connectors, with a catalog of
+  the same connectors Claude offers (github, gmail, drive, dropbox, slack,
+  notion, linear, stripe, supabase, vercel, cloudflare, hugging-face, filesystem,
+  fetch). We CANNOT export Claude's live servers/credentials — the catalog just
+  one-click-adds a config the user authenticates themselves.
+- **VM tab auto-shrinks**: `paintVM` sets grid columns = ceil(sqrt(#machines)),
+  so cards resize as subagents are added. Each machine is a uniform pill-rounded
+  square (main highlighted).
+- **Per-tab settings**: the top-right view dropdown shows a ⚙ per row (Chat→
+  Instructions, IDE→Skills, VM→Connectors) that opens Customize to that tab.
+
 ## Backend API contract (don't rename without updating app.js)
 - `GET/POST /api/subagents`, `DELETE /api/subagents/<id>` — subagent CRUD.
+- `GET/POST /api/connectors`, `DELETE /api/connectors/<id>` — MCP connectors.
 - `GET/POST /api/bus` — shared agent message bus.
 - `GET  /api/branding` → {name, tagline, accent, accent_soft, logo}
 - `GET  /api/config`   → {workdir, skills_dir, ollama}

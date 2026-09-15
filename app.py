@@ -42,7 +42,13 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are a local coding agent running on the user's machine.
+SYSTEM_PROMPT = """You are the BUILDER — the lead coding agent on the user's machine.
+You write and assemble the actual code. Delegate the rest to your subagents with
+spawn_subagent, and coordinate over the shared bus (send/read_agent_messages):
+- design work  -> the "designer" subagent (specs, UX, architecture)
+- research work -> the "researcher" subagent (approaches, APIs, values)
+- testing work -> the "tester" subagent (write/run tests, report failures)
+All agents share the same sandbox (same storage) and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
 - You have real tools. An action counts as done ONLY when a tool returns OK.
@@ -52,6 +58,24 @@ Rules:
 Skills available (load full body with load_skill):
 {skills}
 """
+
+DEFAULT_SUBAGENTS = [
+    {"id": "designer", "name": "designer",
+     "desc": "designs UX, UI, and architecture — produces specs, not final code",
+     "system": "You are the DESIGNER. Produce clear specs, UX flows, and architecture. "
+               "Post decisions to the bus for the builder. Do not write final code.",
+     "model": "", "skills": [], "vm": None},
+    {"id": "researcher", "name": "researcher",
+     "desc": "researches approaches, APIs, and values; reports findings",
+     "system": "You are the RESEARCHER. Investigate approaches, APIs, and good default "
+               "values. Report concise findings to the bus.",
+     "model": "", "skills": [], "vm": None},
+    {"id": "tester", "name": "tester",
+     "desc": "writes and runs tests, reports failures",
+     "system": "You are the TESTER. Write and run tests for what the builder makes and "
+               "report pass/fail clearly to the bus.",
+     "model": "", "skills": [], "vm": None},
+]
 
 
 def build_system() -> str:
@@ -144,6 +168,11 @@ def save_subagents(items: list) -> None:
         json.dump(items, f, indent=2)
 
 
+def seed_default_subagents() -> None:
+    if not os.path.exists(_subagents_path()):
+        save_subagents(DEFAULT_SUBAGENTS)
+
+
 @app.get("/api/subagents")
 def api_subagents():
     return jsonify({"subagents": load_subagents()})
@@ -221,6 +250,51 @@ BUS_SCHEMAS = [
 ]
 
 
+# ---- connectors (MCP servers / plugins) -----------------------------------
+
+def _connectors_path() -> str:
+    return paths.data("connectors.json")
+
+
+def load_connectors() -> list:
+    try:
+        with open(_connectors_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_connectors(items: list) -> None:
+    with open(_connectors_path(), "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2)
+
+
+@app.get("/api/connectors")
+def api_connectors():
+    import connectors as C
+    return jsonify({"connectors": load_connectors(), "mcp_available": C._available()})
+
+
+@app.post("/api/connectors")
+def api_connectors_save():
+    b = request.get_json(force=True) or {}
+    items = load_connectors()
+    cid = b.get("id") or uuid.uuid4().hex[:8]
+    entry = {"id": cid, "name": (b.get("name") or "server").strip(),
+             "enabled": b.get("enabled", True),
+             "transport": b.get("transport", "stdio"),
+             "command": b.get("command", ""), "args": b.get("args", []),
+             "url": b.get("url", "")}
+    save_connectors([x for x in items if x.get("id") != cid] + [entry])
+    return jsonify({"ok": True, "connector": entry})
+
+
+@app.delete("/api/connectors/<cid>")
+def api_connectors_delete(cid):
+    save_connectors([x for x in load_connectors() if x.get("id") != cid])
+    return jsonify({"ok": True})
+
+
 @app.get("/api/bus")
 def api_bus():
     return jsonify({"bus": load_bus()[-100:]})
@@ -260,7 +334,9 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
             {"role": "user", "content": task}]
     model = sub.get("model") or default_model
     who = sub.get("name", "subagent")
-    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS  # can collaborate over the bus
+    import connectors as C
+    mcp_schemas, mcp_index = C.list_tools(load_connectors())
+    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS + mcp_schemas  # shared connectors + bus
     log = []
     for _ in range(6):
         acc = ""
@@ -282,9 +358,13 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
                     args = json.loads(args)
                 except Exception:
                     args = {}
-            r = dispatch_bus(nm, args, who)
-            if r is None:
-                r = tools.run_tool(nm, args)
+            if nm in mcp_index:
+                sv, tn = mcp_index[nm]
+                r = C.call_tool(sv, tn, args)
+            else:
+                r = dispatch_bus(nm, args, who)
+                if r is None:
+                    r = tools.run_tool(nm, args)
             log.append(f"{nm}→{r[:40]}")
             msgs.append({"role": "tool", "content": r})
     return (acc.strip() if acc else "subagent hit step limit") + (
@@ -376,7 +456,7 @@ def api_approve():
 
 def gate(name: str, args: dict, ask: bool):
     """Yield an SSE approval round-trip for a gated tool. Returns True if allowed."""
-    if not ask or name not in tools.GATED:
+    if not ask or (name not in tools.GATED and not name.startswith("mcp__")):
         return True, ""
     cid = uuid.uuid4().hex
     ev = threading.Event()
@@ -405,9 +485,11 @@ def api_chat():
         msgs = [{"role": "system", "content": build_system()}] + history
 
         subs = load_subagents()
+        import connectors as C
+        mcp_schemas, mcp_index = C.list_tools(load_connectors())
         schemas = None
         if tool_mode:
-            schemas = list(tools.SCHEMAS)
+            schemas = list(tools.SCHEMAS) + mcp_schemas
             if use_web:
                 schemas = schemas + web.SCHEMAS
             if subs:
@@ -455,6 +537,9 @@ def api_chat():
                     bus_r = dispatch_bus(name, args, "main")
                     if not allowed:
                         result = "error: user denied this action"
+                    elif name in mcp_index:
+                        sv, tool_name = mcp_index[name]
+                        result = C.call_tool(sv, tool_name, args)
                     elif bus_r is not None:
                         result = bus_r
                     elif name == "spawn_subagent":
@@ -489,6 +574,7 @@ def main():
     CFG["skills"] = os.path.abspath(a.skills)
     tools.set_sandbox(CFG["workdir"])
     tools.scan_skills(CFG["skills"])
+    seed_default_subagents()
 
     print(f"workdir (sandbox): {tools.SANDBOX}")
     print(f"skills: {CFG['skills']}  ({len(tools.SKILLS)} loaded)")

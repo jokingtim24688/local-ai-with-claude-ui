@@ -49,6 +49,7 @@ def serve(port: int):
     backend.CFG["skills"] = paths.data("skills")
     backend.tools.set_sandbox(backend.CFG["workdir"])
     backend.tools.scan_skills(backend.CFG["skills"])
+    backend.seed_default_subagents()
     backend.app.run(host=HOST, port=port, threaded=True, use_reloader=False)
 
 

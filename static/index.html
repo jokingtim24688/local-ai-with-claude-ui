@@ -58,9 +58,18 @@
           <span class="vd-dot"></span><span id="view-current">Chat</span><span class="vd-caret">▾</span>
         </button>
         <div class="viewdrop-menu hidden" id="view-menu">
-          <button data-view="chat" class="on"><b>Chat</b><span>talk to the agent</span></button>
-          <button data-view="code"><b>IDE</b><span>watch it write &amp; run code</span></button>
-          <button data-view="vm"><b>VM</b><span>the machines it works on</span></button>
+          <div class="vd-row on" data-view="chat">
+            <button class="vd-pick"><b>Chat</b><span>talk to the builder</span></button>
+            <button class="vd-gear" data-settings="instructions" title="Chat settings">⚙</button>
+          </div>
+          <div class="vd-row" data-view="code">
+            <button class="vd-pick"><b>IDE</b><span>watch it write &amp; run code</span></button>
+            <button class="vd-gear" data-settings="skills" title="IDE settings">⚙</button>
+          </div>
+          <div class="vd-row" data-view="vm">
+            <button class="vd-pick"><b>VM</b><span>the machines the agents work on</span></button>
+            <button class="vd-gear" data-settings="connectors" title="VM &amp; connectors">⚙</button>
+          </div>
         </div>
       </div>
     </header>
@@ -149,6 +158,7 @@
       <div class="settings-title">Customize</div>
       <button class="tab on" data-tab="skills">Skills</button>
       <button class="tab" data-tab="agents">Subagents</button>
+      <button class="tab" data-tab="connectors">Connectors</button>
       <button class="tab" data-tab="instructions">Instructions</button>
       <button class="tab" data-tab="memory">Memory</button>
       <button class="tab" data-tab="about">About</button>
@@ -172,6 +182,21 @@
           <input id="sa-vm" placeholder="VM stream URL (its own machine, optional)">
           <textarea id="sa-system" rows="3" placeholder="system prompt — what this subagent is for"></textarea>
           <button id="sa-add" class="pill">Add subagent</button>
+        </div>
+      </section>
+
+      <section class="tabpane" data-tab="connectors">
+        <h3>Connectors <span class="muted-inline" id="mcp-status"></span></h3>
+        <p class="muted">MCP servers (the "plugins"). Their tools are shared with the main agent and every subagent, namespaced <code>mcp__server__tool</code>. Install support with <code>pip install mcp</code>.</p>
+        <div class="catalog-head">Add a connector <span class="muted-inline">the same set Claude offers — you sign in with your own account</span></div>
+        <div id="catalog" class="catalog"></div>
+        <ul id="connectors" class="agent-cards"></ul>
+        <div class="agent-form">
+          <input id="co-name" placeholder="name (e.g. filesystem)">
+          <select id="co-transport"><option value="stdio">stdio (local command)</option><option value="sse">sse (remote url)</option></select>
+          <input id="co-command" placeholder="command + args, e.g. npx -y @modelcontextprotocol/server-filesystem .">
+          <input id="co-url" placeholder="https://…/sse (for sse transport)" style="display:none">
+          <button id="co-add" class="pill">Add connector</button>
         </div>
       </section>
 

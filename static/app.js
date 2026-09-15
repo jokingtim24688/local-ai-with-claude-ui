@@ -15,7 +15,7 @@ const state = {
 init();
 async function init() {
   load();
-  wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize();
+  wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors();
   setGreeting();
   document.addEventListener("click", () => { hideMenu(); $("#view-menu").classList.add("hidden"); });
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
@@ -146,18 +146,25 @@ function setGreeting() {
 }
 
 /* ---------- view dropdown ---------- */
+function selectView(v) {
+  const labels = { chat: "Chat", code: "IDE", vm: "VM" };
+  $$("#view-menu .vd-row").forEach((r) => r.classList.toggle("on", r.dataset.view === v));
+  $$(".view").forEach((x) => x.classList.toggle("on", x.dataset.view === v));
+  $("#view-current").textContent = labels[v];
+  document.documentElement.dataset.view = v;
+  if (v === "code") loadTree(); if (v === "vm") loadVM();
+}
 function wireViews() {
   const btn = $("#view-btn"), menu = $("#view-menu");
-  const labels = { chat: "Chat", code: "IDE", vm: "VM" };
   btn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle("hidden"); };
-  $$("#view-menu button").forEach((b) => (b.onclick = (e) => {
+  $$("#view-menu .vd-pick").forEach((b) => (b.onclick = (e) => {
     e.stopPropagation(); menu.classList.add("hidden");
-    const v = b.dataset.view;
-    $$("#view-menu button").forEach((x) => x.classList.toggle("on", x === b));
-    $$(".view").forEach((x) => x.classList.toggle("on", x.dataset.view === v));
-    $("#view-current").textContent = labels[v];
-    document.documentElement.dataset.view = v;
-    if (v === "code") loadTree(); if (v === "vm") loadVM();
+    selectView(b.closest(".vd-row").dataset.view);
+  }));
+  $$("#view-menu .vd-gear").forEach((g) => (g.onclick = (e) => {
+    e.stopPropagation(); menu.classList.add("hidden");
+    selectView(g.closest(".vd-row").dataset.view);
+    openCustomize(g.dataset.settings);
   }));
 }
 
@@ -248,6 +255,77 @@ function openCustomize(tab) {
   $$("#customize .tabpane").forEach((p) => p.classList.toggle("on", p.dataset.tab === tab));
   if (tab === "memory") loadMemory();
   if (tab === "agents") loadSubagents();
+  if (tab === "connectors") loadConnectors();
+}
+
+/* ---------- connectors (MCP) ---------- */
+// The connectors Claude offers. Remote ones are hosted MCP endpoints you sign
+// into; local ones run as an npx stdio server. Credentials are never exported —
+// you authenticate with your own account when you enable one.
+const CATALOG = [
+  { name: "github", icon: "🐙", transport: "stdio", command: "npx -y @modelcontextprotocol/server-github" },
+  { name: "gmail", icon: "✉️", transport: "sse", url: "" },
+  { name: "google-drive", icon: "📄", transport: "sse", url: "" },
+  { name: "dropbox", icon: "📦", transport: "sse", url: "" },
+  { name: "slack", icon: "💬", transport: "sse", url: "" },
+  { name: "notion", icon: "📓", transport: "sse", url: "" },
+  { name: "linear", icon: "📐", transport: "sse", url: "" },
+  { name: "stripe", icon: "💳", transport: "sse", url: "" },
+  { name: "supabase", icon: "🗄️", transport: "sse", url: "" },
+  { name: "vercel", icon: "▲", transport: "sse", url: "" },
+  { name: "cloudflare", icon: "☁️", transport: "sse", url: "" },
+  { name: "hugging-face", icon: "🤗", transport: "sse", url: "" },
+  { name: "filesystem", icon: "🗂️", transport: "stdio", command: "npx -y @modelcontextprotocol/server-filesystem ." },
+  { name: "fetch", icon: "🌐", transport: "stdio", command: "npx -y @modelcontextprotocol/server-fetch" },
+];
+function renderCatalog() {
+  const el = $("#catalog"); if (!el) return;
+  el.innerHTML = CATALOG.map((c, i) =>
+    `<button class="cat-chip" data-cat="${i}"><span>${c.icon}</span>${esc(c.name)}<b>+</b></button>`).join("");
+  $$("#catalog [data-cat]").forEach((b) => (b.onclick = async () => {
+    const c = CATALOG[+b.dataset.cat];
+    await fetch("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: c.name, transport: c.transport,
+        command: c.command ? c.command.split(/\s+/)[0] : "",
+        args: c.command ? c.command.split(/\s+/).slice(1) : [], url: c.url || "" }) });
+    loadConnectors();
+  }));
+}
+async function loadConnectors() {
+  renderCatalog();
+  try {
+    const d = await (await fetch("/api/connectors")).json();
+    $("#mcp-status").textContent = d.mcp_available ? "· MCP ready" : "· install: pip install mcp";
+    const ul = $("#connectors");
+    ul.innerHTML = d.connectors.length ? d.connectors.map((c) =>
+      `<li><div class="ag-top"><b>${esc(c.name)}</b>
+         <span class="ag-model">${esc(c.transport)}</span>
+         <button class="row-menu" data-cdel="${c.id}">✕</button></div>
+       <span class="ag-desc">${esc(c.transport === "sse" ? c.url : (c.command || ""))}</span></li>`).join("")
+      : `<li class="empty-note">no connectors yet</li>`;
+    $$("#connectors [data-cdel]").forEach((b) => (b.onclick = async () => {
+      await fetch("/api/connectors/" + b.dataset.cdel, { method: "DELETE" }); loadConnectors();
+    }));
+  } catch {}
+}
+function wireConnectors() {
+  $("#co-transport").onchange = (e) => {
+    const sse = e.target.value === "sse";
+    $("#co-url").style.display = sse ? "" : "none";
+    $("#co-command").style.display = sse ? "none" : "";
+  };
+  $("#co-add").onclick = async () => {
+    const name = $("#co-name").value.trim(); if (!name) return;
+    const transport = $("#co-transport").value;
+    const raw = $("#co-command").value.trim().split(/\s+/);
+    await fetch("/api/connectors", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, transport,
+        command: transport === "stdio" ? (raw[0] || "") : "",
+        args: transport === "stdio" ? raw.slice(1) : [],
+        url: transport === "sse" ? $("#co-url").value.trim() : "" }) });
+    ["co-name", "co-command", "co-url"].forEach((i) => ($("#" + i).value = ""));
+    loadConnectors();
+  };
 }
 
 /* ---------- code view ---------- */
@@ -300,6 +378,9 @@ function paintVM(d) {
   $("#vm-status").textContent = "status: " + (d.status || "unknown");
   const grid = $("#vm-grid");
   if (grid) {
+    const total = 1 + (d.agents || []).length;
+    const cols = Math.ceil(Math.sqrt(total));           // shrink as agents grow
+    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
     let html = screenCard("main", d.stream, d.status, true);
     (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, a.status, false)));
     grid.innerHTML = html;

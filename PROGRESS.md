@@ -102,3 +102,13 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - Ollama REST at http://localhost:11434 (browser cannot import python lib; backend bridges).
 - No content filter added; refusals come from model weights.
 - Approval gate on write_file/edit_file/run_command unless yolo.
+
+## PIVOT 6: roles + MCP connectors + per-tab settings + VM auto-shrink
+- Main = BUILDER; seed default subagents designer/researcher/tester (seed_default_subagents).
+- connectors.py = MCP client bridge (mcp SDK, fail-closed). connectors.json + CRUD
+  endpoints. mcp__server__tool appended to main + subagent loops; gated by approval.
+- Customize -> Connectors tab with catalog of Claude's connectors (one-click add,
+  user auths own account; cannot export Claude's live servers/creds).
+- Per-tab ⚙ in view dropdown (Chat->Instructions, IDE->Skills, VM->Connectors).
+- VM grid cols = ceil(sqrt(n)) so cards shrink as agents added; uniform square cards.
+- Images: preview_vm.png (updated), preview_connectors.png.
