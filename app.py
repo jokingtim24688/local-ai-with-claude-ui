@@ -57,6 +57,11 @@ PROMPT-MAKER half and a SKILL-MAKER half. You manage a pool of lower subagents.
   research -> "researcher", tests -> "tester", review -> "reviewer", building -> "buddy".
 - You are the parent: go help a subagent that is stuck, and affirm good work — when
   the reviewer approves a task the doer is thanked automatically; reinforce it too.
+- SECOND REVIEW + skill provisioning: after the reviewer, look at the work yourself.
+  If a subagent keeps missing (a task redone 2+ times, or weak design/code), decide
+  what skill it lacks, create_skill it ONCE, then grant_skill(name) so EVERY agent
+  gets it permanently (nobody has to remake it next time), and tell that agent to
+  try again. Prefer fixing the pool's capability over redoing by hand.
 - WATCH THE MACHINE: call get_system_load before spawning agents. If CPU/GPU/RAM
   are high, do NOT add more agents. Call sync_machines to pause idle agents (their
   VM suspends so the PC can breathe) and wake ones with work. If you have too many,
@@ -73,7 +78,8 @@ Skills available (load full body with load_skill):
 {skills}
 """
 
-DOLPHIN = "dolphin3:8b"  # the pool runs on dolphin models
+POOL_MODEL = "hermes3:8b"  # smart + strong tool-calling + lightly aligned; ~same RAM as dolphin3
+DOLPHIN = POOL_MODEL       # (kept name for compatibility)
 
 DEFAULT_SUBAGENTS = [
     {"id": "buddy", "name": "buddy",
@@ -445,8 +451,14 @@ def dispatch_tasks(name: str, args: dict, who: str):
                          f"Great job on '{t['desc']}' — approved. 🎉")
         else:
             t["status"] = "todo"; t["assignee"] = ""       # re-queue for another agent
+            t["redos"] = t.get("redos", 0) + 1
+            if t["redos"] >= 2:                            # escalate to the parent
+                bus_post("main", "all",
+                         f"'{t['desc']}' redone {t['redos']}x — parent: consider a "
+                         f"skill for the pool, then grant_skill it to everyone.")
         t["note"] = args.get("note", "")
-        save_tasks(tk); return f"OK: {t['id']} {t['status']}"
+        save_tasks(tk); return f"OK: {t['id']} {t['status']}" + (
+            f" (redo #{t['redos']})" if t.get("redos") else "")
     return None
 
 
@@ -540,7 +552,23 @@ SYS_SCHEMAS = [
         "name": "sync_machines",
         "description": "Pause idle agents' VMs (no active task) and wake ones with work, so the PC can breathe.",
         "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "grant_skill",
+        "description": "Give an existing skill to EVERY subagent (preloaded), so the whole pool has it for good.",
+        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
 ]
+
+
+def grant_skill_to_all(sk: str) -> str:
+    if sk not in tools.SKILLS:
+        return f"error: no skill '{sk}' (create_skill it first)"
+    items = load_subagents()
+    for s in items:
+        lst = s.setdefault("skills", [])
+        if sk not in lst:
+            lst.append(sk)
+    save_subagents(items)
+    return f"OK: granted '{sk}' to all {len(items)} agents"
 
 
 def _doing_set() -> set:
@@ -578,6 +606,8 @@ def sync_machines() -> str:
 def dispatch_parent(name: str, args: dict):
     if name == "sync_machines":
         return sync_machines()
+    if name == "grant_skill":
+        return grant_skill_to_all(args.get("name", ""))
     if name == "get_system_load":
         s = system_load()
         parts = [f"cpu={s['cpu']}%", f"ram={s['ram']}%", f"cores={s['cores']}"]

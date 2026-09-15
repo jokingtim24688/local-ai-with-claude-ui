@@ -160,3 +160,11 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   24.04, shared mount, multipass exec for run_command, suspend/start to breathe;
   VirtualBox/Hyper-V/QEMU/WSL/Docker alternatives. Remaining bridge: route
   run_command through multipass exec for VM-backed agents.
+
+## PIVOT 11: parent second-review + pool skill grant; smarter model
+- Reviewer redo now counts task.redos; at >=2 it pings the parent on the bus.
+- Parent does a SECOND review: if an agent keeps missing, create_skill once then
+  grant_skill(name) -> appends the skill to EVERY subagent's preloaded skills
+  (grant_skill_to_all), so the pool keeps it and nobody remakes it. Parent-only tool.
+- Pool model swapped dolphin3:8b -> hermes3:8b (POOL_MODEL): smarter + best tool-
+  calling, lightly aligned, ~same RAM. Per-agent model still overridable.
