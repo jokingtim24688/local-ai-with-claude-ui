@@ -156,8 +156,8 @@ function esc(s) {
 }
 function showEmpty() {
   chat.innerHTML = `<div class="empty"><div class="mark"></div>
-    <h2>What are we building?</h2>
-    <p>Pick a model above and describe it. The AI writes, runs, and tests inside its sandbox — watch it in Code, or in the VM stream.</p></div>`;
+    <h2>Speak it into being</h2>
+    <p>Pick a model above and describe what you want. The AI writes, runs, and tests inside its sandbox — watch it work in Code, or in the VM stream.</p></div>`;
 }
 function clearEmpty() { chat.querySelector(".empty")?.remove(); }
 function bottom() { chat.scrollTop = chat.scrollHeight; }

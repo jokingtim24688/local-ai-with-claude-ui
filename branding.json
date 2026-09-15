@@ -1,8 +1,8 @@
 {
-  "name": "Local AI",
-  "tagline": "your machine, your model",
-  "accent": "#d9795b",
-  "accent_soft": "#e39a80",
+  "name": "Elysium",
+  "tagline": "a little heaven on your machine",
+  "accent": "#c99a3a",
+  "accent_soft": "#eac86f",
   "logo": "assets/logo.svg",
   "window": { "width": 1280, "height": 820, "min_width": 900, "min_height": 600 }
 }

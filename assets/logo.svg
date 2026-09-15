@@ -1,13 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#e39a80"/>
-      <stop offset=".55" stop-color="#d9795b"/>
-      <stop offset="1" stop-color="#c9603f"/>
-    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="42%" r="60%">
+      <stop offset="0" stop-color="#fff7e0"/>
+      <stop offset=".5" stop-color="#f0cf7f"/>
+      <stop offset="1" stop-color="#c99a3a"/>
+    </radialGradient>
   </defs>
-  <rect x="6" y="6" width="52" height="52" rx="16" fill="url(#g)"/>
-  <path d="M22 42 L32 20 L42 42" fill="none" stroke="#16130f" stroke-width="4.5"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M26.5 34 H37.5" fill="none" stroke="#16130f" stroke-width="4.5" stroke-linecap="round"/>
+  <!-- halo ring -->
+  <ellipse cx="32" cy="17" rx="13" ry="5.5" fill="none" stroke="url(#halo)" stroke-width="3"/>
+  <!-- wings -->
+  <path d="M32 24 C22 26 14 33 10 44 C20 40 26 41 32 46 C38 41 44 40 54 44 C50 33 42 26 32 24 Z"
+        fill="url(#halo)" stroke="#b9862c" stroke-width="1.2"/>
 </svg>
