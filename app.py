@@ -42,18 +42,21 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are the PARENT agent on the user's machine — the lead builder,
-the PROMPT CREATOR, and the coordinator of a pool of subagents.
-- Turn the user's request into a precise brief and write it to prompt.md with
-  write_file. Every subagent reads prompt.md and follows it. Rewrite it whenever
-  the goal changes and announce it on the bus. Break it into tasks with add_task.
-- Delegate with spawn_subagent and coordinate over the bus (send/read_agent_messages):
-  design -> "designer", research -> "researcher", tests -> "tester",
-  review -> "reviewer", extra building -> "buddy".
-- You are the parent: go into a subagent's work and help it when it is stuck.
-- When the pool needs a capability NO agent has, ask the "skill-creator" subagent
-  to make a skill (it uses create_skill); once created, the new skill is in your
-  library too.
+SYSTEM_PROMPT = """You are the PARENT — two models working together in one VM: a
+PROMPT-MAKER half and a SKILL-MAKER half. You manage a pool of lower subagents.
+- Prompt-maker: turn the user's request into a precise brief, write it to prompt.md
+  with write_file, break it into tasks with add_task. Every subagent reads prompt.md
+  and follows it. Rewrite it whenever the goal changes; announce on the bus.
+- Skill-maker: when the pool needs a capability no agent has, create it yourself
+  with create_skill(name, desc, body). It loads live for every agent.
+- Delegate with spawn_subagent and coordinate over the bus: design -> "designer",
+  research -> "researcher", tests -> "tester", review -> "reviewer", building -> "buddy".
+- You are the parent: go help a subagent that is stuck.
+- WATCH THE MACHINE: call get_system_load before spawning agents. If CPU/GPU/RAM
+  are high, do NOT add more agents. If you already have too many, disable one whose
+  task another agent can do with disable_agent(name) — its task is auto-requeued and
+  another agent picks it up. Re-enable with enable_agent when load drops. Keep the
+  user's PC responsive.
 All agents share the same sandbox (same storage) and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
@@ -68,14 +71,6 @@ Skills available (load full body with load_skill):
 DOLPHIN = "dolphin3:8b"  # the pool runs on dolphin models
 
 DEFAULT_SUBAGENTS = [
-    {"id": "skill-creator", "name": "skill-creator",
-     "desc": "writes a NEW skill when the pool doesn't know how to do something, and gives it to the parent",
-     "system": "You are the SKILL-CREATOR. When any agent hits something the pool has no "
-               "skill for, write a new skill with create_skill(name, desc, body): a concise, "
-               "actionable SKILL.md with real commands/code. It is added to the shared library "
-               "immediately, so the parent and every agent can use it. Announce new skills on "
-               "the bus. Keep one skill = one job.",
-     "model": DOLPHIN, "skills": ["skill-creator"], "vm": None},
     {"id": "buddy", "name": "buddy",
      "desc": "general builder — claims tasks and writes code per prompt.md",
      "system": "You are BUDDY, a builder. Claim up to 2 tasks, follow prompt.md, write the "
@@ -458,6 +453,88 @@ def dispatch_skill(name: str, args: dict, who: str):
     return f"OK: skill '{sk}' created and loaded ({len(tools.SKILLS)} skills)"
 
 
+# ---- system load + capacity control ---------------------------------------
+
+def system_load() -> dict:
+    out = {"cpu": None, "ram": None, "cores": None, "gpu": None, "gpu_mem": None}
+    try:
+        import psutil
+        out["cpu"] = psutil.cpu_percent(interval=0.1)
+        out["ram"] = psutil.virtual_memory().percent
+        out["cores"] = psutil.cpu_count()
+    except Exception:
+        pass
+    try:
+        import subprocess
+        r = subprocess.run(["nvidia-smi",
+            "--query-gpu=utilization.gpu,memory.used,memory.total",
+            "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=3)
+        if r.returncode == 0 and r.stdout.strip():
+            u, mu, mt = [x.strip() for x in r.stdout.strip().splitlines()[0].split(",")]
+            out["gpu"] = float(u)
+            out["gpu_mem"] = round(100 * float(mu) / float(mt)) if float(mt) else None
+    except Exception:
+        pass
+    return out
+
+
+def active_agents() -> int:
+    return sum(1 for s in load_subagents() if s.get("enabled", True))
+
+
+def set_agent_enabled(name: str, on: bool) -> str:
+    items = load_subagents()
+    hit = next((s for s in items if s["name"] == name), None)
+    if not hit:
+        return f"error: no agent '{name}'"
+    hit["enabled"] = on
+    save_subagents(items)
+    if not on:  # requeue its in-flight work for another agent
+        tk = load_tasks()
+        for t in tk:
+            if t.get("assignee") == name and t.get("status") == "doing":
+                t["status"] = "todo"; t["assignee"] = ""
+        save_tasks(tk)
+        return f"OK: {name} disabled — its tasks re-queued"
+    return f"OK: {name} enabled"
+
+
+SYS_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": "get_system_load",
+        "description": "Read the user's machine load (CPU %, RAM %, GPU %, cores). Check before spawning agents.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "disable_agent",
+        "description": "Shut down a subagent to free resources; its current task is auto-requeued for another agent.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "reason": {"type": "string"}}, "required": ["name"]}}},
+    {"type": "function", "function": {
+        "name": "enable_agent", "description": "Re-enable a disabled subagent when load drops.",
+        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
+]
+
+
+def dispatch_parent(name: str, args: dict):
+    if name == "get_system_load":
+        s = system_load()
+        parts = [f"cpu={s['cpu']}%", f"ram={s['ram']}%", f"cores={s['cores']}"]
+        if s["gpu"] is not None:
+            parts.append(f"gpu={s['gpu']}% (mem {s['gpu_mem']}%)")
+        parts.append(f"active_agents={active_agents()}")
+        return ", ".join(parts)
+    if name == "disable_agent":
+        return set_agent_enabled(args.get("name", ""), False)
+    if name == "enable_agent":
+        return set_agent_enabled(args.get("name", ""), True)
+    return None
+
+
+@app.get("/api/system")
+def api_system():
+    return jsonify({**system_load(), "active_agents": active_agents()})
+
+
 @app.get("/api/tasks")
 def api_tasks():
     return jsonify({"tasks": load_tasks()})
@@ -602,9 +679,12 @@ def api_vm():
     agents = []
     for s in load_subagents():
         vm = s.get("vm") or {}
+        en = s.get("enabled", True)
         agents.append({"name": s["name"], "stream": vm.get("stream", ""),
-                       "status": vm.get("status", "idle")})
-    return jsonify({**VM, "name": "main", "agents": agents})
+                       "enabled": en,
+                       "status": vm.get("status", "idle") if en else "disabled"})
+    return jsonify({**VM, "name": "main", "parent": True,
+                    "system": system_load(), "agents": agents})
 
 
 @app.post("/api/vm/action")
@@ -676,7 +756,7 @@ def api_chat():
                 schemas = schemas + web.SCHEMAS
             if subs:
                 names = ", ".join(s["name"] for s in subs)
-                schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + [{"type": "function", "function": {
+                schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + SYS_SCHEMAS + [{"type": "function", "function": {
                     "name": "spawn_subagent",
                     "description": f"Delegate a self-contained task to a subagent (its own VM, shared storage). Available: {names}.",
                     "parameters": {"type": "object", "properties": {
@@ -719,6 +799,7 @@ def api_chat():
                     bus_r = dispatch_bus(name, args, "main")
                     task_r = dispatch_tasks(name, args, "main") if bus_r is None else None
                     skill_r = dispatch_skill(name, args, "main") if (bus_r is None and task_r is None) else None
+                    parent_r = dispatch_parent(name, args) if (bus_r is None and task_r is None and skill_r is None) else None
                     if not allowed:
                         result = "error: user denied this action"
                     elif name in mcp_index:
@@ -730,10 +811,15 @@ def api_chat():
                         result = task_r
                     elif skill_r is not None:
                         result = skill_r
+                    elif parent_r is not None:
+                        result = parent_r
                     elif name == "spawn_subagent":
                         sub = next((s for s in subs if s["name"] == args.get("name")), None)
-                        result = (run_subagent(client, model, sub, args.get("task", ""))
-                                  if sub else f"error: no subagent '{args.get('name')}'")
+                        if sub and not sub.get("enabled", True):
+                            result = f"error: '{sub['name']}' is disabled (freed for resources)"
+                        else:
+                            result = (run_subagent(client, model, sub, args.get("task", ""))
+                                      if sub else f"error: no subagent '{args.get('name')}'")
                     elif name in web.REGISTRY:
                         result = web.run_web_tool(name, args) if use_web \
                             else "error: web tools disabled this turn"

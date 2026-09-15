@@ -135,3 +135,15 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - Skills added: shared-prompt, task-orchestration, agent-comms (3P bus updates).
 - UI: Task board panel in VM side (status dots) + theme polish (contrast, gold,
   focus rings). Image: preview_vm.png updated.
+
+## PIVOT 9: parent=2-in-1 (prompt+skill), capacity-aware scaling
+- Parent = two models one VM: prompt-maker + skill-maker. Removed skill-creator
+  subagent (parent makes skills via create_skill). Pool: buddy/designer/researcher/
+  tester/reviewer (dolphin3:8b).
+- System load: system_load() (psutil CPU/RAM + nvidia-smi GPU). /api/system.
+  Tool get_system_load for parent (check before spawning).
+- Capacity control: disable_agent(name)/enable_agent(name) tools (parent only).
+  Disabling re-queues that agent's 'doing' tasks (auto-reassign). spawn refuses
+  disabled agents. subagent 'enabled' flag; /api/vm returns enabled + system.
+- UI: System load meters (CPU/RAM/GPU, warm/hot) + disabled agent card (greyed)
+  in VM tab. requirements += psutil. Image: preview_vm.png.

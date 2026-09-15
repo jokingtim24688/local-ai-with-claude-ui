@@ -372,23 +372,38 @@ async function loadVM() {
         <span class="tk-who">${esc(x.assignee || x.status)}</span></li>`).join("")
       || `<li class="empty-note">no tasks</li>`; } catch {}
 }
-function screenCard(name, stream, status, primary) {
+function screenCard(name, stream, status, primary, enabled = true) {
+  const label = primary ? name + " · parent (2 models)" : name;
+  const off = enabled ? "" : " off";
   const body = stream
     ? `<img src="${esc(stream)}" alt="">`
     : `<div class="vm-overlay"><span class="vm-live"><i></i>${esc(name)}</span>
-         <p>${primary ? "Set VM_STREAM to your VM's VNC / MJPEG feed." : "no stream — add one in Customize → Subagents"}</p></div>`;
-  return `<div class="vm-screen ${primary ? "primary" : ""}">
-      <div class="vm-tag">${esc(name)}${primary ? " · main" : ""} <span class="vm-st">${esc(status || "")}</span></div>${body}</div>`;
+         <p>${!enabled ? "disabled by parent — freed for resources"
+            : primary ? "Set VM_STREAM to your VM's VNC / MJPEG feed."
+            : "no stream — add one in Customize → Subagents"}</p></div>`;
+  return `<div class="vm-screen ${primary ? "primary" : ""}${off}">
+      <div class="vm-tag">${esc(label)} <span class="vm-st">${esc(status || "")}</span></div>${body}</div>`;
+}
+function meter(label, v) {
+  if (v === null || v === undefined) return `<div class="mtr"><span>${label}</span><b>n/a</b></div>`;
+  const cls = v > 85 ? "hot" : v > 60 ? "warm" : "";
+  return `<div class="mtr ${cls}"><span>${label}</span>
+    <div class="mtr-bar"><i style="width:${Math.min(100, v)}%"></i></div><b>${Math.round(v)}%</b></div>`;
 }
 function paintVM(d) {
   $("#vm-status").textContent = "status: " + (d.status || "unknown");
+  const sys = d.system || {};
+  const sl = $("#sysload");
+  if (sl) sl.innerHTML = meter("CPU", sys.cpu) + meter("RAM", sys.ram) +
+    (sys.gpu !== null && sys.gpu !== undefined ? meter("GPU", sys.gpu) : "") +
+    `<div class="mtr-note">${(d.agents || []).filter((a) => a.enabled !== false).length + 1} active · ${sys.cores || "?"} cores</div>`;
   const grid = $("#vm-grid");
   if (grid) {
     const total = 1 + (d.agents || []).length;
     const cols = Math.ceil(Math.sqrt(total));           // shrink as agents grow
     grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
     let html = screenCard("main", d.stream, d.status, true);
-    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, a.status, false)));
+    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, a.status, false, a.enabled !== false)));
     grid.innerHTML = html;
   }
   if (d.app_url) $("#vm-app").innerHTML = `<iframe src="${esc(d.app_url)}" style="width:100%;height:100%;border:0;border-radius:12px"></iframe>`;

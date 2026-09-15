@@ -2,3 +2,4 @@ flask>=3.0
 ollama>=0.3
 pywebview>=5.0
 mcp>=1.0  # optional: enables Connectors (MCP servers)
+psutil>=5.9  # system load (CPU/RAM) for the parent agent
