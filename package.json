@@ -1,0 +1,14 @@
+{
+  "name": "local-ai-desktop",
+  "version": "0.1.0",
+  "description": "Desktop app to manage a local Ollama AI. Claude-style UI, chat/code toggle, VM stream.",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "backend": "python app.py --workdir ./workspace --skills ./skills",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
+}

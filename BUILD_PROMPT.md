@@ -1,0 +1,154 @@
+# BUILD PROMPT — give this to a fresh chat to recreate + install the AI
+
+Copy everything below the line into a new coding chat. It fully specifies the
+app, the local AI engine, the skills, and the VM stream. It builds a **desktop
+app** (Electron) that manages a local Ollama AI — no terminal panel for the
+user.
+
+---
+
+## What to build
+
+A macOS/Windows/Linux **desktop app** called **Local AI**. It manages a local
+coding agent that runs on **Ollama** (any pulled model). The app must look
+hand-built, not AI-generated: warm dark theme with a clay/coral accent (NOT
+purple), **liquid-glass** chrome (`backdrop-filter` blur + translucent fill +
+thin light border + soft shadow), **pill-shaped** buttons, spring-eased
+micro-interactions, one orchestrated load reveal, and a subtle grain overlay.
+
+### Three views, switched by a segmented control in the top-right
+
+1. **Chat** — Claude-style centered chat. Streaming replies. Tool calls render
+   as animated pill "chips" inline with their results. Glass composer pinned
+   at the bottom. Prefix a message with `/web` to allow web tools that turn.
+2. **Code** — three columns: a **file tree** of the sandbox, a **file viewer**,
+   and a **live activity** feed that mirrors every tool call as the AI works.
+   This is the "watch it code" view.
+3. **VM** — a big glass **stream stage** showing the VM the AI runs in (VNC /
+   MJPEG / WebRTC feed), plus controls (Start VM, Launch app, Stop) and an
+   **app preview** pane that shows the app the AI launches and tests inside the
+   VM. The user watches the AI build and test a real app here.
+
+The segmented control (Chat / Code / VM) with a sliding glass "thumb" is the
+top-right toggle — flip between normal chat and watching it code / run.
+
+## Architecture
+
+```
+electron/main.js     spawns the Python backend hidden, opens the app window
+electron/preload.js  contextBridge shim
+app.py               Flask backend: Ollama bridge + tool loop + endpoints
+tools.py             tool registry + sandbox jail (confine every file op)
+web.py               web_search / web_fetch (only on /web turns)
+static/              index.html, style.css, app.js  (the renderer / UI)
+skills/<name>/SKILL.md   loadable skills (name+desc in prompt, body on demand)
+workspace/           default sandbox — the AI is confined here
+```
+
+Electron loads `http://127.0.0.1:5173` (the Flask app) inside a frameless
+window, so it presents as a real app. The Python backend bridges the browser
+to the Ollama Python lib (the browser can't import it).
+
+### Backend endpoints (Flask, `app.py`)
+
+- `GET  /api/config`  → `{workdir, skills_dir, ollama}`
+- `GET  /api/models`  → local Ollama tags via `ollama.Client().list()`
+- `GET  /api/skills`  → scan `skills/**/SKILL.md`, return name+desc
+- `GET  /api/memory`  → contents of `MEMORY.md`
+- `GET  /api/tree`    → recursive file tree of the sandbox
+- `GET  /api/file?path=` → read one sandboxed file
+- `GET  /api/vm` / `POST /api/vm/action` → VM stream URL + start/launch/stop
+- `POST /api/chat`    → **SSE stream**: events `token`, `tool_call`,
+  `tool_result`, `approval`, `error`, `done`. Runs a native-tool-calling loop
+  (cap ~12 iterations). Web tools appended only when the turn is `/web`.
+- `POST /api/approve` → resolves a pending `approval` (threading.Event keyed by
+  id) so gated tools wait for the user's Allow/Deny in the UI.
+
+### Tools (`tools.py`) — all confined to the sandbox
+
+`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`,
+`run_command`, `load_skill`, `remember`. Every path resolves inside the work
+dir; block `..`, absolute paths, and symlink escapes (resolve then
+`Path.relative_to(sandbox)` and reject on `ValueError`). Gate
+`write_file` / `edit_file` / `run_command` behind the approval modal unless a
+yolo flag is set.
+
+### System prompt (blunt, honest)
+
+> You are a local coding agent on the user's machine. Be blunt and terse; no
+> filler, no lecturing, no "as an AI". You have real tools — an action counts
+> as done ONLY when a tool returns OK. Never claim you saved/ran/edited/found
+> anything unless a tool result says so. All paths are relative to the work
+> directory; you cannot escape it. Web tools exist only on `/web` turns.
+
+No content filter is added by the app. Refusal behavior comes from the model
+weights — use an uncensored tag (e.g. a Dolphin fine-tune) for fewer refusals;
+a system prompt cannot remove training baked into weights.
+
+## Design spec (make it look human-made)
+
+- Palette: `--ink #16130f`, text `--paper #efe7db`, accent `--clay #d9795b`.
+  No purple/violet anywhere.
+- Glass recipe on floating chrome only (topbar, rail, composer, panes, modal,
+  VM stage): `backdrop-filter:blur(20px) saturate(140%)`,
+  `background:rgba(38,33,27,.55)`, `border:1px solid rgba(239,231,219,.16)`,
+  `box-shadow:0 10px 40px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,246,236,.06)`.
+  Body-text surfaces stay solid for contrast. Provide a `@supports not
+  (backdrop-filter)` fallback.
+- Pills: gradient clay fill, inset top highlight, `:active{scale(.95)}`, spring
+  easing `cubic-bezier(.2,.9,.25,1.15)`.
+- Motion: staggered load reveal (topbar → rail → stage); messages fade-up;
+  tool chips have a pulsing dot; view switch cross-fades + slides; blinking
+  caret while streaming. One grain overlay via inline `feTurbulence`.
+- Serif wordmark, sans body. Real empty-state copy ("What are we building?"),
+  not "No items yet".
+
+## Skills (ship these; the app loads any `skills/<name>/SKILL.md`)
+
+Include at minimum:
+- **game-programming** — engines→languages, defensive anticheat, Lua/Python
+  scripting.
+- **vscode-windows-dev** — build/run/debug/compile commands on Windows + VCS.
+- **web-research** — how to use `/web` search+fetch well.
+- **blender-bpy**, **anticheat** as the user provides them.
+
+A skill file is Markdown with optional `name:` / `description:` lines; the app
+puts only name+description in the prompt and loads the full body on demand via
+`load_skill`.
+
+## The VM (where the AI actually runs)
+
+Provision a VM (VirtualBox / QEMU-KVM / Vagrant / cloud). Install Ollama and
+this app's backend inside it. Expose the VM's screen as a stream and set:
+
+- `VM_STREAM`  → the VNC/MJPEG/WebRTC stream URL the VM view embeds
+- `VM_APP_URL` → URL of the app the AI launches, for the preview pane
+- `VM_HOOK_START` / `VM_HOOK_LAUNCH` / `VM_HOOK_STOP` → shell commands the VM
+  controls run (start the machine, launch the app under test, stop it)
+
+With none set, the VM view shows a clear "not configured" state instead of
+faking a stream.
+
+## Install / run
+
+```bash
+pip install -r requirements.txt      # flask, ollama
+npm install                          # electron
+ollama serve                         # if not already running
+ollama pull qwen2.5-coder:7b         # or any coding / uncensored tag
+npm start                            # launches the desktop app
+```
+
+`npm start` runs `electron .`; Electron spawns `python app.py --workdir
+./workspace --skills ./skills` on port 5173 and opens the window. The user
+never sees a terminal.
+
+## Acceptance
+
+- App opens as a native window, Ollama status dot goes green.
+- Chat streams; a build request makes the AI call `write_file` / `run_command`
+  (each gated by the Allow modal); files appear in the Code tree live.
+- Code view shows the tree, file contents, and the live activity feed.
+- VM view embeds the stream when `VM_STREAM` is set and the controls fire the
+  `VM_HOOK_*` commands.
+- No purple, real glass, pill buttons, spring motion — reads as hand-built.
