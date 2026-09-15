@@ -17,7 +17,8 @@ async function init() {
   load();
   wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors(); wireTerminal();
   setGreeting();
-  document.addEventListener("click", () => { hideMenu(); $("#view-menu").classList.add("hidden"); });
+  document.addEventListener("click", () => hideMenu());
+  wireCollapse();
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
   applyDefaultModel();
   loadTree(); loadVM();
@@ -146,12 +147,15 @@ function setGreeting() {
   $("#greeting").textContent = t + ". What shall we create?";
 }
 
-/* ---------- view dropdown ---------- */
+/* ---------- view switcher (animated segmented) ---------- */
+function moveInd() {
+  const on = $("#views button.on"); const ind = $("#vs-ind");
+  if (on && ind) { ind.style.width = on.offsetWidth + "px"; ind.style.transform = `translateX(${on.offsetLeft - 4}px)`; }
+}
 function selectView(v) {
-  const labels = { chat: "Chat", code: "IDE", vm: "VM" };
-  $$("#view-menu .vd-row").forEach((r) => r.classList.toggle("on", r.dataset.view === v));
+  $$("#views button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   $$(".view").forEach((x) => x.classList.toggle("on", x.dataset.view === v));
-  $("#view-current").textContent = labels[v];
+  moveInd();
   document.documentElement.dataset.view = v;
   if (v === "code") loadTree(); if (v === "vm") loadVM();
   if (v === "terminal") { loadTargets(); loadChanges(); setTimeout(() => $("#term-in").focus(), 60); }
@@ -245,17 +249,17 @@ async function termSend() {
   setBusy(false); save(); loadChanges();
 }
 function wireViews() {
-  const btn = $("#view-btn"), menu = $("#view-menu");
-  btn.onclick = (e) => { e.stopPropagation(); menu.classList.toggle("hidden"); };
-  $$("#view-menu .vd-pick").forEach((b) => (b.onclick = (e) => {
-    e.stopPropagation(); menu.classList.add("hidden");
-    selectView(b.closest(".vd-row").dataset.view);
-  }));
-  $$("#view-menu .vd-gear").forEach((g) => (g.onclick = (e) => {
-    e.stopPropagation(); menu.classList.add("hidden");
-    selectView(g.closest(".vd-row").dataset.view);
-    openCustomize(g.dataset.settings);
-  }));
+  $$("#views button").forEach((b) => (b.onclick = () => selectView(b.dataset.view)));
+  requestAnimationFrame(moveInd);
+  window.addEventListener("resize", () => { moveInd(); });
+}
+function wireCollapse() {
+  const collapse = () => $("#shell").classList.add("collapsed");
+  const expand = () => $("#shell").classList.remove("collapsed");
+  $("#side-collapse").onclick = collapse;
+  $("#mini-expand").onclick = expand;
+  $("#mini-new").onclick = () => { expand(); newChat(); };
+  $("#mini-settings").onclick = () => openCustomize("skills");
 }
 
 /* ---------- loaders ---------- */
@@ -282,15 +286,20 @@ async function loadConfig() {
     const st = $("#status");
     st.classList.toggle("up", !!c.ollama); st.classList.toggle("down", !c.ollama);
     st.lastChild.textContent = c.ollama ? "ollama online" : "ollama offline";
-  } catch { const st = $("#status"); st.classList.add("down"); st.lastChild.textContent = "offline"; }
+    const md = $("#mini-dot"); md.classList.toggle("up", !!c.ollama); md.classList.toggle("down", !c.ollama);
+    md.title = c.ollama ? "ollama online" : "ollama offline";
+  } catch { const st = $("#status"); st.classList.add("down"); st.lastChild.textContent = "offline"; $("#mini-dot").classList.add("down"); }
 }
 async function loadModels() {
   try {
     const d = await (await fetch("/api/models")).json();
-    state.models = d.models || [];
+    const all = d.models || [];
+    // show only the recommended models for this app: hermes + dolphin
+    const pick = all.filter((m) => /hermes|dolphin/i.test(m));
+    state.models = pick.length ? pick : all;
     modelSel.innerHTML = state.models.length
       ? state.models.map((m) => `<option>${esc(m)}</option>`).join("")
-      : `<option>${esc(d.error || "no models")}</option>`;
+      : `<option>${esc(d.error || "no hermes/dolphin model — ollama pull hermes3:8b")}</option>`;
     $("#sa-model").innerHTML = `<option value="">(inherit model)</option>` +
       state.models.map((m) => `<option>${esc(m)}</option>`).join("");
   } catch { modelSel.innerHTML = "<option>offline</option>"; }
@@ -327,6 +336,8 @@ async function loadSubagents() {
 }
 function wireCustomize() {
   $("#close-customize").onclick = () => $("#customize").classList.add("hidden");
+  $("#customize").addEventListener("click", (e) => { if (e.target.id === "customize") $("#customize").classList.add("hidden"); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#customize").classList.add("hidden"); });
   $$("#customize .tab").forEach((t) => (t.onclick = () => openCustomize(t.dataset.tab)));
   $("#agents-chip").onclick = () => openCustomize("agents");
   $("#reload-mem").onclick = loadMemory;

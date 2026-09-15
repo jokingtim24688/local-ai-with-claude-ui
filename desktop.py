@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import socket
+import sys
 import threading
 import time
 
@@ -63,7 +64,30 @@ def wait_up(url: str, tries: int = 60):
             time.sleep(0.25)
 
 
+def ensure_ollama():
+    """Best-effort: start `ollama serve` if Ollama is installed but not running."""
+    import shutil
+    import subprocess
+    import urllib.request
+    try:
+        urllib.request.urlopen("http://127.0.0.1:11434/api/version", timeout=1).read()
+        return  # already up
+    except Exception:
+        pass
+    exe = shutil.which("ollama")
+    if not exe:
+        return
+    try:
+        flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
+        subprocess.Popen([exe, "serve"], creationflags=flags) if sys.platform == "win32" \
+            else subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(2)
+    except Exception:
+        pass
+
+
 def main():
+    ensure_ollama()
     paths.seed_user_data()
     b = load_branding()
     w = b.get("window", {})

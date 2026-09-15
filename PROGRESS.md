@@ -177,3 +177,16 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   (git url+branch) or file (path). /api/git/push does add/commit/push to the repo
   target (git init if needed; creds via user's git helper / token-in-url).
 - Image: preview_terminal.png.
+
+## PIVOT 13: polish pass (anti-vibe)
+- New logo (halo + wings, no weird head); assets/icon.ico generated → real exe icon
+  (spec already wires it). desktop.py auto-starts `ollama serve` if installed.
+- Sharper: grain .5→.14, glass blur 22→10px, solid-ish panels; text crisp.
+- View switcher: dropdown → animated segmented (Chat/IDE/VM/Terminal) with sliding
+  indicator. moveInd/selectView/wireViews rewritten.
+- Collapsed sidebar = mini rail (#rail-mini): logo, ☰ expand, + new chat, ✦ settings,
+  green/red ollama dot. wireCollapse.
+- Settings modal: click-off + Esc to close, scrollbar hidden, blur lowered, cream
+  panes (not white).
+- Model pill filtered to hermes/dolphin only. mini-dot mirrors ollama status.
+- Images: preview_chat.png (repolished), preview_collapsed.png.

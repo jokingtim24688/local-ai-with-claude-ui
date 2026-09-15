@@ -48,34 +48,27 @@
     </div>
   </aside>
 
+  <!-- COLLAPSED RAIL (shown only when .shell.collapsed) -->
+  <div class="rail-mini" id="rail-mini">
+    <img class="logo" alt="" src="/assets/logo.svg">
+    <button class="mini-icon" id="mini-expand" title="expand menu">☰</button>
+    <button class="mini-icon accent" id="mini-new" title="new chat">+</button>
+    <button class="mini-icon" id="mini-settings" title="customize">✦</button>
+    <span class="mini-dot" id="mini-dot" title="ollama"></span>
+  </div>
+
   <!-- MAIN -->
   <main class="main">
     <header class="topbar">
       <button class="icon-btn" id="side-open" title="menu">☰</button>
       <span class="crumb" id="crumb"></span>
-      <div class="viewdrop" id="views">
-        <button class="viewdrop-btn" id="view-btn">
-          <span class="vd-dot"></span><span id="view-current">Chat</span><span class="vd-caret">▾</span>
-        </button>
-        <div class="viewdrop-menu hidden" id="view-menu">
-          <div class="vd-row on" data-view="chat">
-            <button class="vd-pick"><b>Chat</b><span>talk to the builder</span></button>
-            <button class="vd-gear" data-settings="instructions" title="Chat settings">⚙</button>
-          </div>
-          <div class="vd-row" data-view="code">
-            <button class="vd-pick"><b>IDE</b><span>watch it write &amp; run code</span></button>
-            <button class="vd-gear" data-settings="skills" title="IDE settings">⚙</button>
-          </div>
-          <div class="vd-row" data-view="vm">
-            <button class="vd-pick"><b>VM</b><span>the machines the agents work on</span></button>
-            <button class="vd-gear" data-settings="connectors" title="VM &amp; connectors">⚙</button>
-          </div>
-          <div class="vd-row" data-view="terminal">
-            <button class="vd-pick"><b>Terminal</b><span>simple mode · changes · push</span></button>
-            <button class="vd-gear" data-settings="connectors" title="targets">⚙</button>
-          </div>
-        </div>
-      </div>
+      <nav class="viewseg" id="views">
+        <span class="vs-ind" id="vs-ind"></span>
+        <button data-view="chat" class="on" title="Chat"><span class="vs-ic">◗</span><span class="vs-lb">Chat</span></button>
+        <button data-view="code" title="IDE"><span class="vs-ic">&lt;/&gt;</span><span class="vs-lb">IDE</span></button>
+        <button data-view="vm" title="VM"><span class="vs-ic">▦</span><span class="vs-lb">VM</span></button>
+        <button data-view="terminal" title="Terminal"><span class="vs-ic">▹</span><span class="vs-lb">Terminal</span></button>
+      </nav>
     </header>
 
     <div class="stage">
