@@ -9,7 +9,7 @@ const chatView = $("#chat-view");
 const K = { convos: "aiheaven.convos", projects: "aiheaven.projects", instr: "aiheaven.instructions" };
 const state = {
   convos: [], projects: [], cur: null, projectFilter: null, showArchived: false,
-  tools: true, web: false, busy: false, instructions: "", models: [],
+  tools: true, web: false, auto: false, busy: false, instructions: "", models: [],
 };
 
 init();
@@ -395,6 +395,7 @@ function wireComposer() {
   input.addEventListener("input", () => { input.style.height = "auto"; input.style.height = input.scrollHeight + "px"; });
   $("#tools-chip").onclick = (e) => { state.tools = !state.tools; e.target.classList.toggle("on", state.tools); };
   $("#web-chip").onclick = (e) => { state.web = !state.web; e.target.classList.toggle("on", state.web); };
+  $("#auto-chip").onclick = (e) => { state.auto = !state.auto; e.target.classList.toggle("on", state.auto); };
 }
 function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 function bottom() { chat.scrollTop = chat.scrollHeight; }
@@ -450,7 +451,7 @@ async function streamChat(web) {
   if (state.instructions) msgs.unshift({ role: "system", content: state.instructions });
   const res = await fetch("/api/chat", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: true }),
+    body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: !state.auto }),
   });
   const reader = res.body.getReader(); const dec = new TextDecoder();
   let buf = "", bodyEl = null, acc = "", ref = null;

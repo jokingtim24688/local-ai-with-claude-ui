@@ -112,3 +112,13 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - Per-tab ⚙ in view dropdown (Chat->Instructions, IDE->Skills, VM->Connectors).
 - VM grid cols = ceil(sqrt(n)) so cards shrink as agents added; uniform square cards.
 - Images: preview_vm.png (updated), preview_connectors.png.
+
+## PIVOT 7: full skill library + Auto mode
+- 26 skills in skills/ (seeded to every agent): app-control, spotify-control,
+  ollama-ops, desktop-automation, music-player-dev, mcp-builder, docx/pdf/pptx/xlsx,
+  game-dev-3d, model-training, reverse-engineering, skill-creator, vm-orchestration,
+  frontend-polish, data-viz, ui-design, claude-api, internal-comms, morning-brief,
+  learn, code-review + existing game-programming/vscode-windows-dev/web-research.
+- Composer "Auto" chip -> ask=false (run commands hands-free for home automation).
+- Scenario "start spotify + ollama + build music player" now covered by skills;
+  run_command launches apps (only file paths sandboxed, not process launch).
