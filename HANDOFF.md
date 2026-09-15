@@ -27,7 +27,24 @@ branding.json← name/logo/accent/window. Currently name = "Ai Heaven".
 elysium.spec ← PyInstaller build (auto-detects Windows→.exe / macOS→.app).
 ```
 
+## Subagents + shared agent bus (multi-VM collaboration)
+- Subagents are named helpers with their own system prompt / model / skills, and
+  optionally their **own VM** (`sub.vm.stream`). Stored in
+  `AiHeaven-data/subagents.json`. The main agent delegates with the
+  `spawn_subagent(name, task)` tool (added to its schema only when subagents
+  exist). `run_subagent()` runs a nested tool-loop autonomously (no approval
+  modal) but **inside the same sandbox** = shared storage.
+- Agents (main + subs) collaborate over a **shared bus** (`bus.json`) with tools
+  `send_agent_message(to,text)` / `read_agent_messages()`. Model: "different PCs
+  (VMs), same data (shared workspace), talk over the bus."
+- Real multi-VM provisioning is the piece still to build: give each subagent its
+  own VM (VirtualBox/QEMU/cloud), mount the SAME shared workspace into each, run
+  a backend instance per VM, and point `sub.vm.stream` at each VM's feed. The VM
+  tab already renders one screen per agent from `/api/vm`.
+
 ## Backend API contract (don't rename without updating app.js)
+- `GET/POST /api/subagents`, `DELETE /api/subagents/<id>` — subagent CRUD.
+- `GET/POST /api/bus` — shared agent message bus.
 - `GET  /api/branding` → {name, tagline, accent, accent_soft, logo}
 - `GET  /api/config`   → {workdir, skills_dir, ollama}
 - `GET  /api/models`   → {models:[tag,...], error?}
@@ -42,10 +59,17 @@ elysium.spec ← PyInstaller build (auto-detects Windows→.exe / macOS→.app).
 - `POST /api/approve {id, allow}` → resolves a pending approval (threading.Event).
 
 ## UI notes
-- Vanilla JS in `static/app.js`. State: conversations kept in `localStorage`
-  under key `aiheaven.convos`. Views: Chat / Code / VM via the top-right
-  segmented control. Chat "home" (centered greeting) vs "chatting" toggled by
-  the `home` class on `#chat-view`.
+- Vanilla JS in `static/app.js`. Client state in `localStorage`:
+  `aiheaven.convos` (chats: title, messages, projectId, archived),
+  `aiheaven.projects` (groups), `aiheaven.instructions` (custom instructions
+  prepended as a system msg). Chats support rename / archive / delete / move-to-
+  project via a right-side ⋯ menu; a "Archived" toggle switches the Recents list.
+- Views: Chat / IDE (code) / VM chosen from a **top-right dropdown** that shows
+  the current view. Chat "home" (centered greeting) vs "chatting" via the `home`
+  class on `#chat-view`.
+- **Customize** modal (gear in the sidebar foot) holds tabs: Skills, Subagents
+  (CRUD + own-VM stream field), Instructions, Memory, About. This is where the
+  clutter moved out of the sidebar.
 - Design: heaven skin — dawn-sky bg, gold (`--clay #c99a3a`) accent, frosted
   glass on chrome, pill/spring motion. NO purple. Keep it hand-built, not
   templated. See the anti-vibe-polish guidance.

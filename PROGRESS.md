@@ -12,6 +12,18 @@ Branch: `claude/amazing-keller-dvibe7`. Repo: jokingtim24688/local-ai-with-claud
 - Do NOT reply to self / acknowledge loops.
 - Save progress every 5 min to this file with redo instructions.
 
+## PIVOT 5: subagents + multi-VM + Claude org features
+- Subagents: /api/subagents CRUD (subagents.json), spawn_subagent tool, nested
+  run_subagent loop (autonomous, shared sandbox). Each can have own VM (vm.stream).
+- Shared agent bus: /api/bus + send_agent_message/read_agent_messages tools.
+  "different VMs, same storage, talk over bus." (real multi-VM provisioning = TODO)
+- /api/vm now returns agents[] -> VM tab shows a screen per agent + bus feed.
+- Sidebar decluttered: Projects (groups) + Recents + Archived toggle; per-chat ⋯
+  menu (rename/archive/delete/move). Skills+Memory+Subagents+Instructions moved
+  into a Customize modal. localStorage: aiheaven.convos/projects/instructions.
+- Top-right view switch is now a DROPDOWN showing current view (Chat/IDE/VM).
+- Images: preview_chat.png, preview_ide.png, preview_vm.png (dropped preview_code).
+
 ## PIVOT 4: Claude-desktop layout + rename "Ai Heaven"
 - New shell: left sidebar (chat history via localStorage `aiheaven.convos`,
   New chat, search, collapsible Skills/Memory/status), centered home greeting,

@@ -123,6 +123,167 @@ def api_memory():
         return jsonify({"memory": ""})
 
 
+# ---- subagents ------------------------------------------------------------
+# A subagent is a named helper with its own system prompt / model / skills.
+# The main agent delegates a task to one via the spawn_subagent tool.
+
+def _subagents_path() -> str:
+    return paths.data("subagents.json")
+
+
+def load_subagents() -> list:
+    try:
+        with open(_subagents_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_subagents(items: list) -> None:
+    with open(_subagents_path(), "w", encoding="utf-8") as f:
+        json.dump(items, f, indent=2)
+
+
+@app.get("/api/subagents")
+def api_subagents():
+    return jsonify({"subagents": load_subagents()})
+
+
+@app.post("/api/subagents")
+def api_subagents_save():
+    body = request.get_json(force=True) or {}
+    items = load_subagents()
+    sid = body.get("id") or uuid.uuid4().hex[:8]
+    entry = {
+        "id": sid,
+        "name": (body.get("name") or "agent").strip(),
+        "desc": body.get("desc", ""),
+        "system": body.get("system", ""),
+        "model": body.get("model", ""),
+        "skills": body.get("skills", []),
+    }
+    items = [x for x in items if x.get("id") != sid] + [entry]
+    save_subagents(items)
+    return jsonify({"ok": True, "subagent": entry})
+
+
+@app.delete("/api/subagents/<sid>")
+def api_subagents_delete(sid):
+    save_subagents([x for x in load_subagents() if x.get("id") != sid])
+    return jsonify({"ok": True})
+
+
+# ---- shared agent bus -----------------------------------------------------
+# All agents (main + subagents) share ONE sandbox (same storage) and talk over
+# a shared message bus — modelling "different PCs, same data". A real multi-VM
+# setup gives each subagent its own VM (sub["vm"]) but points them at the same
+# shared workspace mount and the same bus.
+
+def _bus_path() -> str:
+    return paths.data("bus.json")
+
+
+def load_bus() -> list:
+    try:
+        with open(_bus_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def bus_post(sender: str, to: str, text: str) -> str:
+    msgs = load_bus()
+    msgs.append({"from": sender, "to": to or "all", "text": text,
+                 "ts": int(__import__("time").time())})
+    with open(_bus_path(), "w", encoding="utf-8") as f:
+        json.dump(msgs[-500:], f, indent=2)
+    return f"OK: message sent to {to or 'all'}"
+
+
+def bus_read(reader: str) -> str:
+    msgs = load_bus()
+    mine = [m for m in msgs if m["to"] in ("all", reader) or m["from"] == reader]
+    if not mine:
+        return "(no messages)"
+    return "\n".join(f"[{m['from']}→{m['to']}] {m['text']}" for m in mine[-30:])
+
+
+BUS_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": "send_agent_message",
+        "description": "Post a message to another agent (or 'all') on the shared bus.",
+        "parameters": {"type": "object", "properties": {
+            "to": {"type": "string"}, "text": {"type": "string"}}, "required": ["text"]}}},
+    {"type": "function", "function": {
+        "name": "read_agent_messages",
+        "description": "Read messages addressed to you or to all on the shared bus.",
+        "parameters": {"type": "object", "properties": {}}}},
+]
+
+
+@app.get("/api/bus")
+def api_bus():
+    return jsonify({"bus": load_bus()[-100:]})
+
+
+@app.post("/api/bus")
+def api_bus_post():
+    b = request.get_json(force=True) or {}
+    return jsonify({"ok": True, "result": bus_post(b.get("from", "user"),
+                                                    b.get("to", "all"), b.get("text", ""))})
+
+
+def dispatch_bus(name: str, args: dict, who: str):
+    if name == "send_agent_message":
+        return bus_post(who, args.get("to", "all"), args.get("text", ""))
+    if name == "read_agent_messages":
+        return bus_read(who)
+    return None
+
+
+def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
+    """Run a nested tool-loop for one subagent and return its final answer.
+    Runs autonomously (no approval modal) but stays inside the sandbox."""
+    sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse."]
+    for name in sub.get("skills", []):
+        s = tools.SKILLS.get(name)
+        if s:
+            sys_lines.append(f"\n# skill: {name}\n{s['body']}")
+    msgs = [{"role": "system", "content": "\n".join(sys_lines)},
+            {"role": "user", "content": task}]
+    model = sub.get("model") or default_model
+    who = sub.get("name", "subagent")
+    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS  # can collaborate over the bus
+    log = []
+    for _ in range(6):
+        acc = ""
+        calls = []
+        for chunk in client.chat(model=model, messages=msgs,
+                                 tools=schemas, stream=True):
+            m = chunk.get("message", {})
+            acc += m.get("content") or ""
+            calls += m.get("tool_calls") or []
+        msgs.append({"role": "assistant", "content": acc, "tool_calls": calls or None})
+        if not calls:
+            return acc.strip() + ("\n" + " | ".join(log) if log else "")
+        for tc in calls:
+            fn = tc.get("function", {})
+            nm = fn.get("name", "")
+            args = fn.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except Exception:
+                    args = {}
+            r = dispatch_bus(nm, args, who)
+            if r is None:
+                r = tools.run_tool(nm, args)
+            log.append(f"{nm}→{r[:40]}")
+            msgs.append({"role": "tool", "content": r})
+    return (acc.strip() if acc else "subagent hit step limit") + (
+        "\n" + " | ".join(log) if log else "")
+
+
 # ---- code view: file tree + read ------------------------------------------
 
 @app.get("/api/tree")
@@ -169,7 +330,12 @@ VM = {
 
 @app.get("/api/vm")
 def api_vm():
-    return jsonify(VM)
+    agents = []
+    for s in load_subagents():
+        vm = s.get("vm") or {}
+        agents.append({"name": s["name"], "stream": vm.get("stream", ""),
+                       "status": vm.get("status", "idle")})
+    return jsonify({**VM, "name": "main", "agents": agents})
 
 
 @app.post("/api/vm/action")
@@ -231,11 +397,20 @@ def api_chat():
         client = ollama.Client()
         msgs = [{"role": "system", "content": build_system()}] + history
 
+        subs = load_subagents()
         schemas = None
         if tool_mode:
             schemas = list(tools.SCHEMAS)
             if use_web:
                 schemas = schemas + web.SCHEMAS
+            if subs:
+                names = ", ".join(s["name"] for s in subs)
+                schemas = schemas + BUS_SCHEMAS + [{"type": "function", "function": {
+                    "name": "spawn_subagent",
+                    "description": f"Delegate a self-contained task to a subagent (its own VM, shared storage). Available: {names}.",
+                    "parameters": {"type": "object", "properties": {
+                        "name": {"type": "string"}, "task": {"type": "string"}},
+                        "required": ["name", "task"]}}}]
 
         try:
             for _ in range(12):  # tool-loop cap
@@ -270,8 +445,15 @@ def api_chat():
                     yield sse("tool_call", {"name": name, "args": args})
 
                     allowed, _ = yield from gate(name, args, ask)
+                    bus_r = dispatch_bus(name, args, "main")
                     if not allowed:
                         result = "error: user denied this action"
+                    elif bus_r is not None:
+                        result = bus_r
+                    elif name == "spawn_subagent":
+                        sub = next((s for s in subs if s["name"] == args.get("name")), None)
+                        result = (run_subagent(client, model, sub, args.get("task", ""))
+                                  if sub else f"error: no subagent '{args.get('name')}'")
                     elif name in web.REGISTRY:
                         result = web.run_web_tool(name, args) if use_web \
                             else "error: web tools disabled this turn"

@@ -15,7 +15,7 @@
 <div class="grain"></div>
 
 <div class="shell" id="shell">
-  <!-- SIDEBAR (Claude-style) -->
+  <!-- SIDEBAR -->
   <aside class="sidebar glass reveal" id="sidebar" style="--i:0">
     <div class="side-top">
       <img class="logo" id="logo" alt="" src="/assets/logo.svg">
@@ -27,24 +27,24 @@
 
     <div class="search"><input id="search" placeholder="Search chats…" autocomplete="off"></div>
 
-    <div class="recents">
-      <div class="side-label">Recents</div>
-      <ul id="history" class="history"></ul>
+    <div class="side-scroll">
+      <div class="side-section">
+        <div class="side-label">Projects <button class="mini" id="add-project">+ New</button></div>
+        <ul id="projects" class="projects"></ul>
+      </div>
+
+      <div class="side-section grow">
+        <div class="side-label"><span id="recents-label">Recents</span>
+          <button class="mini" id="toggle-archived">Archived</button></div>
+        <ul id="history" class="history"></ul>
+      </div>
     </div>
 
-    <div class="workspace">
-      <details open>
-        <summary>Skills</summary>
-        <ul id="skills" class="skills"></ul>
-      </details>
-      <details>
-        <summary>Memory <button id="reload-mem" class="mini">refresh</button></summary>
-        <pre id="memory" class="memory">nothing remembered yet</pre>
-      </details>
-      <div class="side-foot">
-        <span class="status" id="status"><i></i>connecting</span>
-        <code id="workdir" class="workdir">—</code>
-      </div>
+    <div class="side-foot">
+      <button class="foot-btn" id="open-customize">
+        <span class="gear">✦</span> Customize
+      </button>
+      <span class="status" id="status"><i></i>connecting</span>
     </div>
   </aside>
 
@@ -52,12 +52,17 @@
   <main class="main">
     <header class="topbar">
       <button class="icon-btn" id="side-open" title="menu">☰</button>
-      <nav class="segmented" id="views">
-        <span class="thumb" id="thumb"></span>
-        <button data-view="chat" class="on">Chat</button>
-        <button data-view="code">Code</button>
-        <button data-view="vm">VM</button>
-      </nav>
+      <span class="crumb" id="crumb"></span>
+      <div class="viewdrop" id="views">
+        <button class="viewdrop-btn" id="view-btn">
+          <span class="vd-dot"></span><span id="view-current">Chat</span><span class="vd-caret">▾</span>
+        </button>
+        <div class="viewdrop-menu hidden" id="view-menu">
+          <button data-view="chat" class="on"><b>Chat</b><span>talk to the agent</span></button>
+          <button data-view="code"><b>IDE</b><span>watch it write &amp; run code</span></button>
+          <button data-view="vm"><b>VM</b><span>the machines it works on</span></button>
+        </div>
+      </div>
     </header>
 
     <div class="stage">
@@ -66,26 +71,27 @@
         <div class="thread">
           <div class="hero" id="hero">
             <div class="mark"></div>
-            <h1 id="greeting">Where shall we begin?</h1>
+            <h1 id="greeting">What shall we create?</h1>
           </div>
           <div id="chat" class="chat"></div>
         </div>
 
         <div class="composer-wrap">
           <form id="composer" class="composer glass">
-            <textarea id="input" rows="1" placeholder="Ask Elysium to build something…"></textarea>
+            <textarea id="input" rows="1" placeholder="Ask Ai Heaven to build something…"></textarea>
             <div class="composer-bar">
               <div class="model-pill">
                 <span class="glyph"></span>
                 <select id="model" aria-label="model"></select>
               </div>
-              <button type="button" class="chip on" id="tools-chip" title="let it use tools">Tools</button>
-              <button type="button" class="chip" id="web-chip" title="allow web this chat">Web</button>
+              <button type="button" class="chip on" id="tools-chip">Tools</button>
+              <button type="button" class="chip" id="web-chip">Web</button>
+              <button type="button" class="chip" id="agents-chip" title="subagents">Agents</button>
               <span class="spacer"></span>
               <button id="send" class="send-btn" type="submit" title="send">↑</button>
             </div>
           </form>
-          <p class="disclaimer">Runs locally on your Ollama models. It can read &amp; write only inside its sandbox.</p>
+          <p class="disclaimer">Runs locally on your Ollama models. It reads &amp; writes only inside its sandbox.</p>
         </div>
       </section>
 
@@ -110,17 +116,12 @@
       <!-- VM -->
       <section class="view" data-view="vm">
         <div class="vm-wrap">
-          <div class="vm-stage glass">
-            <div class="vm-screen" id="vm-screen">
-              <img id="vm-stream" alt="" />
-              <div class="vm-overlay" id="vm-overlay">
-                <span class="vm-live"><i></i>VM stream</span>
-                <p id="vm-hint">No stream configured. Set VM_STREAM to your VM's VNC / MJPEG feed.</p>
-              </div>
-            </div>
+          <div class="vm-main">
+            <div class="pane-head">Machines <span class="muted-inline">main + subagents · shared storage</span></div>
+            <div class="vm-grid" id="vm-grid"></div>
           </div>
           <div class="vm-side glass">
-            <div class="pane-head">Machine</div>
+            <div class="pane-head">Controls</div>
             <p class="vm-status" id="vm-status">status: unknown</p>
             <div class="vm-actions">
               <button class="pill" data-vm="start">Start VM</button>
@@ -129,11 +130,71 @@
             </div>
             <div class="pane-head" style="margin-top:18px">App preview</div>
             <div class="vm-app" id="vm-app"><span>app appears here when launched</span></div>
+            <div class="pane-head" style="margin-top:18px">Agent bus</div>
+            <ul class="bus" id="bus"></ul>
           </div>
         </div>
       </section>
     </div>
   </main>
+</div>
+
+<!-- chat item context menu -->
+<div id="menu" class="ctx-menu hidden"></div>
+
+<!-- CUSTOMIZE modal -->
+<div id="customize" class="modal hidden">
+  <div class="settings glass">
+    <div class="settings-side">
+      <div class="settings-title">Customize</div>
+      <button class="tab on" data-tab="skills">Skills</button>
+      <button class="tab" data-tab="agents">Subagents</button>
+      <button class="tab" data-tab="instructions">Instructions</button>
+      <button class="tab" data-tab="memory">Memory</button>
+      <button class="tab" data-tab="about">About</button>
+      <button class="settings-close" id="close-customize">Done</button>
+    </div>
+    <div class="settings-body">
+      <section class="tabpane on" data-tab="skills">
+        <h3>Skills</h3>
+        <p class="muted">Only name + description go into the prompt; the full body loads on demand. Add more in <code id="skills-path">skills/</code>.</p>
+        <ul id="skills" class="skill-cards"></ul>
+      </section>
+
+      <section class="tabpane" data-tab="agents">
+        <h3>Subagents</h3>
+        <p class="muted">Named helpers the main agent can delegate a task to with <code>spawn_subagent</code>. Each has its own prompt, model, and skills.</p>
+        <ul id="subagents" class="agent-cards"></ul>
+        <div class="agent-form">
+          <input id="sa-name" placeholder="name (e.g. researcher)">
+          <input id="sa-desc" placeholder="short description">
+          <select id="sa-model"><option value="">(inherit model)</option></select>
+          <input id="sa-vm" placeholder="VM stream URL (its own machine, optional)">
+          <textarea id="sa-system" rows="3" placeholder="system prompt — what this subagent is for"></textarea>
+          <button id="sa-add" class="pill">Add subagent</button>
+        </div>
+      </section>
+
+      <section class="tabpane" data-tab="instructions">
+        <h3>Custom instructions</h3>
+        <p class="muted">Sent with every chat, on top of the built-in prompt.</p>
+        <textarea id="instructions" rows="8" placeholder="e.g. Prefer Godot. Keep replies terse. Always write tests."></textarea>
+        <button id="save-instructions" class="pill">Save</button>
+      </section>
+
+      <section class="tabpane" data-tab="memory">
+        <h3>Memory <button id="reload-mem" class="mini">refresh</button></h3>
+        <p class="muted">What the agent chose to remember (MEMORY.md in the sandbox).</p>
+        <pre id="memory" class="memory">nothing remembered yet</pre>
+      </section>
+
+      <section class="tabpane" data-tab="about">
+        <h3 id="about-name">Ai Heaven</h3>
+        <p class="muted">A little heaven on your machine — a local coding agent on Ollama.</p>
+        <p class="muted">Sandbox: <code id="workdir">—</code></p>
+      </section>
+    </div>
+  </div>
 </div>
 
 <!-- approval -->
