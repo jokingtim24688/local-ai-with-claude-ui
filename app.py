@@ -42,12 +42,18 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are the BUILDER — the lead coding agent on the user's machine.
-You write and assemble the actual code. Delegate the rest to your subagents with
-spawn_subagent, and coordinate over the shared bus (send/read_agent_messages):
-- design work  -> the "designer" subagent (specs, UX, architecture)
-- research work -> the "researcher" subagent (approaches, APIs, values)
-- testing work -> the "tester" subagent (write/run tests, report failures)
+SYSTEM_PROMPT = """You are the PARENT agent on the user's machine — the lead builder,
+the PROMPT CREATOR, and the coordinator of a pool of subagents.
+- Turn the user's request into a precise brief and write it to prompt.md with
+  write_file. Every subagent reads prompt.md and follows it. Rewrite it whenever
+  the goal changes and announce it on the bus. Break it into tasks with add_task.
+- Delegate with spawn_subagent and coordinate over the bus (send/read_agent_messages):
+  design -> "designer", research -> "researcher", tests -> "tester",
+  review -> "reviewer", extra building -> "buddy".
+- You are the parent: go into a subagent's work and help it when it is stuck.
+- When the pool needs a capability NO agent has, ask the "skill-creator" subagent
+  to make a skill (it uses create_skill); once created, the new skill is in your
+  library too.
 All agents share the same sandbox (same storage) and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
@@ -59,28 +65,66 @@ Skills available (load full body with load_skill):
 {skills}
 """
 
+DOLPHIN = "dolphin3:8b"  # the pool runs on dolphin models
+
 DEFAULT_SUBAGENTS = [
+    {"id": "skill-creator", "name": "skill-creator",
+     "desc": "writes a NEW skill when the pool doesn't know how to do something, and gives it to the parent",
+     "system": "You are the SKILL-CREATOR. When any agent hits something the pool has no "
+               "skill for, write a new skill with create_skill(name, desc, body): a concise, "
+               "actionable SKILL.md with real commands/code. It is added to the shared library "
+               "immediately, so the parent and every agent can use it. Announce new skills on "
+               "the bus. Keep one skill = one job.",
+     "model": DOLPHIN, "skills": ["skill-creator"], "vm": None},
+    {"id": "buddy", "name": "buddy",
+     "desc": "general builder — claims tasks and writes code per prompt.md",
+     "system": "You are BUDDY, a builder. Claim up to 2 tasks, follow prompt.md, write the "
+               "code, mark each done, then claim the next. Coordinate on the bus.",
+     "model": DOLPHIN, "skills": [], "vm": None},
     {"id": "designer", "name": "designer",
-     "desc": "designs UX, UI, and architecture — produces specs, not final code",
-     "system": "You are the DESIGNER. Produce clear specs, UX flows, and architecture. "
-               "Post decisions to the bus for the builder. Do not write final code.",
-     "model": "", "skills": [], "vm": None},
+     "desc": "designs UX, UI, and architecture — specs, not final code",
+     "system": "You are the DESIGNER. Produce specs, UX flows, and architecture per "
+               "prompt.md. Post decisions to the bus. Do not write final code.",
+     "model": DOLPHIN, "skills": ["ui-design", "frontend-polish"], "vm": None},
     {"id": "researcher", "name": "researcher",
-     "desc": "researches approaches, APIs, and values; reports findings",
-     "system": "You are the RESEARCHER. Investigate approaches, APIs, and good default "
-               "values. Report concise findings to the bus.",
-     "model": "", "skills": [], "vm": None},
+     "desc": "researches approaches, APIs, values; reports findings",
+     "system": "You are the RESEARCHER. Investigate approaches, APIs, and good defaults "
+               "for the tasks in prompt.md. Report concise findings to the bus.",
+     "model": DOLPHIN, "skills": ["web-research"], "vm": None},
     {"id": "tester", "name": "tester",
-     "desc": "writes and runs tests, reports failures",
-     "system": "You are the TESTER. Write and run tests for what the builder makes and "
-               "report pass/fail clearly to the bus.",
-     "model": "", "skills": [], "vm": None},
+     "desc": "writes and runs tests, reports pass/fail",
+     "system": "You are the TESTER. Test what the builders make against prompt.md and "
+               "report pass/fail on the bus.",
+     "model": DOLPHIN, "skills": [], "vm": None},
+    {"id": "reviewer", "name": "reviewer",
+     "desc": "reviews code & design against prompt.md; sends work back to redo if it disagrees",
+     "system": "You are the REVIEWER. For each task marked done, check the code AND the "
+               "design against prompt.md. If you disagree with either, call review_task with "
+               "verdict 'redo' and a clear reason — it goes back to the queue for another "
+               "agent. Only approve work that meets prompt.md.",
+     "model": DOLPHIN, "skills": ["code-review"], "vm": None},
 ]
+
+
+PROMPT_FILE = "prompt.md"  # shared standing prompt every agent obeys
+
+
+def read_prompt() -> str:
+    """The shared prompt.md in the sandbox — the prompt-writer maintains it and
+    every agent follows it. Empty if not written yet."""
+    try:
+        return tools.read_file(PROMPT_FILE).strip()
+    except Exception:
+        return ""
 
 
 def build_system() -> str:
     lines = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
-    return SYSTEM_PROMPT.format(skills="\n".join(lines) or "(none)")
+    base = SYSTEM_PROMPT.format(skills="\n".join(lines) or "(none)")
+    p = read_prompt()
+    if p:
+        base += ("\n\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
+    return base
 
 
 def sse(event: str, data) -> str:
@@ -295,6 +339,137 @@ def api_connectors_delete(cid):
     return jsonify({"ok": True})
 
 
+# ---- task board -----------------------------------------------------------
+# Shared work queue. Agents claim up to 2 tasks; on done, another agent claims
+# the next. The reviewer checks done work against prompt.md and can send it back
+# to redo. All over shared storage (tasks.json) so the whole pool coordinates.
+
+def _tasks_path() -> str:
+    return paths.data("tasks.json")
+
+
+def load_tasks() -> list:
+    try:
+        with open(_tasks_path(), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_tasks(items: list) -> None:
+    with open(_tasks_path(), "w", encoding="utf-8") as f:
+        json.dump(items[-500:], f, indent=2)
+
+
+def _new_task(desc: str, kind: str = "code") -> dict:
+    return {"id": uuid.uuid4().hex[:8], "desc": desc, "kind": kind,
+            "status": "todo", "assignee": "", "note": "",
+            "ts": int(__import__("time").time())}
+
+
+TASK_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": "add_task", "description": "Add a task to the shared board.",
+        "parameters": {"type": "object", "properties": {
+            "desc": {"type": "string"},
+            "kind": {"type": "string", "description": "code | design | test | research"}},
+            "required": ["desc"]}}},
+    {"type": "function", "function": {
+        "name": "list_tasks", "description": "List the shared task board.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "claim_task", "description": "Claim the next open task (max 2 per agent). Omit id to auto-pick.",
+        "parameters": {"type": "object", "properties": {"id": {"type": "string"}}}}},
+    {"type": "function", "function": {
+        "name": "complete_task", "description": "Mark a task you did as done (goes to review).",
+        "parameters": {"type": "object", "properties": {
+            "id": {"type": "string"}, "note": {"type": "string"}}, "required": ["id"]}}},
+    {"type": "function", "function": {
+        "name": "review_task", "description": "Review a done task: verdict 'approve' or 'redo' (redo re-queues it).",
+        "parameters": {"type": "object", "properties": {
+            "id": {"type": "string"}, "verdict": {"type": "string"}, "note": {"type": "string"}},
+            "required": ["id", "verdict"]}}},
+]
+
+
+def dispatch_tasks(name: str, args: dict, who: str):
+    tk = load_tasks()
+    if name == "add_task":
+        tk.append(_new_task(args.get("desc", ""), args.get("kind", "code")))
+        save_tasks(tk); return "OK: task added"
+    if name == "list_tasks":
+        if not tk:
+            return "(no tasks)"
+        return "\n".join(f"[{t['status']}] {t['id']} ({t['assignee'] or '—'}): {t['desc']}" for t in tk[-30:])
+    if name == "claim_task":
+        mine = [t for t in tk if t["assignee"] == who and t["status"] == "doing"]
+        if len(mine) >= 2:
+            return "error: you already hold 2 tasks — finish one first"
+        tid = args.get("id")
+        cand = next((t for t in tk if t["id"] == tid and t["status"] == "todo"), None) if tid \
+            else next((t for t in tk if t["status"] == "todo"), None)
+        if not cand:
+            return "(no open tasks)"
+        cand["status"] = "doing"; cand["assignee"] = who
+        save_tasks(tk); return f"OK: claimed {cand['id']} — {cand['desc']}"
+    if name == "complete_task":
+        t = next((t for t in tk if t["id"] == args.get("id")), None)
+        if not t:
+            return "error: no such task"
+        t["status"] = "review"; t["note"] = args.get("note", "")
+        save_tasks(tk); return f"OK: {t['id']} done → review"
+    if name == "review_task":
+        t = next((t for t in tk if t["id"] == args.get("id")), None)
+        if not t:
+            return "error: no such task"
+        if args.get("verdict") == "approve":
+            t["status"] = "done"
+        else:
+            t["status"] = "todo"; t["assignee"] = ""      # re-queue for another agent
+        t["note"] = args.get("note", "")
+        save_tasks(tk); return f"OK: {t['id']} {t['status']}"
+    return None
+
+
+# ---- skill creation (agents extend their own library) ---------------------
+
+SKILL_SCHEMAS = [
+    {"type": "function", "function": {
+        "name": "create_skill",
+        "description": "Author a NEW skill (SKILL.md) and add it to the shared library now.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "desc": {"type": "string"}, "body": {"type": "string"}},
+            "required": ["name", "body"]}}},
+]
+
+
+def dispatch_skill(name: str, args: dict, who: str):
+    if name != "create_skill":
+        return None
+    import re
+    sk = re.sub(r"[^a-z0-9-]", "", (args.get("name") or "skill").lower().replace(" ", "-")) or "skill"
+    desc = args.get("desc", "")
+    body = args.get("body", "")
+    d = os.path.join(CFG["skills"], sk)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(f"---\nname: {sk}\ndescription: {desc}\n---\n\n{body}\n")
+    tools.scan_skills(CFG["skills"])          # live: available to every agent now
+    return f"OK: skill '{sk}' created and loaded ({len(tools.SKILLS)} skills)"
+
+
+@app.get("/api/tasks")
+def api_tasks():
+    return jsonify({"tasks": load_tasks()})
+
+
+@app.post("/api/tasks")
+def api_tasks_add():
+    b = request.get_json(force=True) or {}
+    tk = load_tasks(); tk.append(_new_task(b.get("desc", ""), b.get("kind", "code")))
+    save_tasks(tk); return jsonify({"ok": True})
+
+
 @app.get("/api/bus")
 def api_bus():
     return jsonify({"bus": load_bus()[-100:]})
@@ -319,6 +494,9 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     """Run a nested tool-loop for one subagent and return its final answer.
     Runs autonomously (no approval modal) but stays inside the sandbox."""
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse."]
+    p = read_prompt()
+    if p:
+        sys_lines.append("\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
     # every subagent gets the whole skill library: roster in the prompt, full
     # bodies loadable on demand via load_skill (same as the main agent).
     roster = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
@@ -336,7 +514,7 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     who = sub.get("name", "subagent")
     import connectors as C
     mcp_schemas, mcp_index = C.list_tools(load_connectors())
-    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS + mcp_schemas  # shared connectors + bus
+    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + mcp_schemas
     log = []
     for _ in range(6):
         acc = ""
@@ -363,6 +541,10 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
                 r = C.call_tool(sv, tn, args)
             else:
                 r = dispatch_bus(nm, args, who)
+                if r is None:
+                    r = dispatch_tasks(nm, args, who)
+                if r is None:
+                    r = dispatch_skill(nm, args, who)
                 if r is None:
                     r = tools.run_tool(nm, args)
             log.append(f"{nm}→{r[:40]}")
@@ -494,7 +676,7 @@ def api_chat():
                 schemas = schemas + web.SCHEMAS
             if subs:
                 names = ", ".join(s["name"] for s in subs)
-                schemas = schemas + BUS_SCHEMAS + [{"type": "function", "function": {
+                schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + [{"type": "function", "function": {
                     "name": "spawn_subagent",
                     "description": f"Delegate a self-contained task to a subagent (its own VM, shared storage). Available: {names}.",
                     "parameters": {"type": "object", "properties": {
@@ -535,6 +717,8 @@ def api_chat():
 
                     allowed, _ = yield from gate(name, args, ask)
                     bus_r = dispatch_bus(name, args, "main")
+                    task_r = dispatch_tasks(name, args, "main") if bus_r is None else None
+                    skill_r = dispatch_skill(name, args, "main") if (bus_r is None and task_r is None) else None
                     if not allowed:
                         result = "error: user denied this action"
                     elif name in mcp_index:
@@ -542,6 +726,10 @@ def api_chat():
                         result = C.call_tool(sv, tool_name, args)
                     elif bus_r is not None:
                         result = bus_r
+                    elif task_r is not None:
+                        result = task_r
+                    elif skill_r is not None:
+                        result = skill_r
                     elif name == "spawn_subagent":
                         sub = next((s for s in subs if s["name"] == args.get("name")), None)
                         result = (run_subagent(client, model, sub, args.get("task", ""))

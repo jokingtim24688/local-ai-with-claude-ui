@@ -365,6 +365,12 @@ async function loadVM() {
   try { const d = await (await fetch("/api/bus")).json();
     $("#bus").innerHTML = (d.bus || []).slice(-12).reverse().map((m) =>
       `<li><b>${esc(m.from)}→${esc(m.to)}</b> ${esc(m.text)}</li>`).join("") || `<li class="empty-note">no messages</li>`; } catch {}
+  try { const d = await (await fetch("/api/tasks")).json();
+    const t = $("#tasks"); if (t) t.innerHTML = (d.tasks || []).slice(-14).map((x) =>
+      `<li class="tk tk-${esc(x.status)}"><span class="tk-dot"></span>
+        <span class="tk-desc">${esc(x.desc)}</span>
+        <span class="tk-who">${esc(x.assignee || x.status)}</span></li>`).join("")
+      || `<li class="empty-note">no tasks</li>`; } catch {}
 }
 function screenCard(name, stream, status, primary) {
   const body = stream

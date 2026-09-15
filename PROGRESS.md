@@ -122,3 +122,16 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - Composer "Auto" chip -> ask=false (run commands hands-free for home automation).
 - Scenario "start spotify + ollama + build music player" now covered by skills;
   run_command launches apps (only file paths sandboxed, not process launch).
+
+## PIVOT 8: parent+prompt-creator, dolphin pool, skill-creator, shared prompt, task board
+- Main = PARENT + PROMPT CREATOR: writes prompt.md (injected into every agent's
+  system prompt via read_prompt), breaks into add_task, helps subagents.
+- Dolphin pool (dolphin3:8b) default subagents: skill-creator, buddy, designer,
+  researcher, tester, reviewer. (only seeds on fresh subagents.json)
+- skill-creator: create_skill(name,desc,body) writes skills/<name>/SKILL.md AND
+  re-scans so it's live for all agents. Schemas in main + subagent loops.
+- Task board (tasks.json): add_task/list_tasks/claim_task(≤2)/complete_task/
+  review_task(approve|redo). /api/tasks. redo re-queues for another agent.
+- Skills added: shared-prompt, task-orchestration, agent-comms (3P bus updates).
+- UI: Task board panel in VM side (status dots) + theme polish (contrast, gold,
+  focus rings). Image: preview_vm.png updated.
