@@ -24,6 +24,7 @@ CMD = [
     "--windows-console-mode=disable",       # no console window
     "--windows-icon-from-ico=assets/icon.ico",
     "--company-name=Ai Heaven", "--product-name=Ai Heaven",
+    "--file-version=0.1.0", "--product-version=0.1.0",
     "--include-package=webview", "--include-package=flask",
     "--include-data-dir=static=static",
     "--include-data-dir=assets=assets",

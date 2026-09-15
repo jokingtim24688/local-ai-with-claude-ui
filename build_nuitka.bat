@@ -8,6 +8,7 @@ python -m nuitka --standalone --onefile --assume-yes-for-downloads ^
   --windows-console-mode=disable ^
   --windows-icon-from-ico=assets\icon.ico ^
   --company-name="Ai Heaven" --product-name="Ai Heaven" ^
+  --file-version=0.1.0 --product-version=0.1.0 ^
   --include-package=webview --include-package=flask ^
   --include-data-dir=static=static ^
   --include-data-dir=assets=assets ^
@@ -17,5 +18,9 @@ python -m nuitka --standalone --onefile --assume-yes-for-downloads ^
   --output-filename="Ai Heaven.exe" ^
   desktop.py
 echo.
-echo Built. Your compiled app is on your Desktop: "Ai Heaven.exe"
+if errorlevel 1 (
+  echo BUILD FAILED — see the error above.
+) else (
+  echo Built. Your compiled app is on your Desktop: "Ai Heaven.exe"
+)
 pause
