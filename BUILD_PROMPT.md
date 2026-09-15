@@ -136,16 +136,23 @@ faking a stream.
 
 ## Install / run
 
+Ship it as a real standalone app, not loose scripts. Package `desktop.py` with
+**PyInstaller** so it becomes one double-clickable file — no Python install:
+
 ```bash
-pip install -r requirements.txt      # flask, ollama, pywebview
-ollama serve                         # if not already running
-ollama pull qwen2.5-coder:7b         # or any coding / uncensored tag
-python desktop.py                    # launches the native app window
+pip install -r requirements.txt pyinstaller
+python build.py            # runs: pyinstaller --noconfirm elysium.spec
+# dist/Elysium.exe  (Windows) | dist/Elysium.app (macOS) | dist/Elysium (Linux)
 ```
 
-`desktop.py` starts the Flask backend in a background thread on port 5173 and
-opens a native `pywebview` window titled from `branding.json`. The user never
-sees a terminal. Fall back to the browser if `pywebview` is missing.
+The spec bundles `static/`, `assets/`, `branding.json`, and default `skills/`
+as read-only resources (served from `sys._MEIPASS`). Use a `paths.py` that
+resolves bundled resources vs. a writable `Elysium-data/` folder created next
+to the executable for `workspace/`, `skills/` (seeded from the bundle on first
+run), and `MEMORY.md`. `desktop.py` starts Flask in a background thread on a
+free port and opens a native `pywebview` window titled from `branding.json`;
+no terminal is shown. Dev: `python desktop.py`. Requires Ollama installed +
+a model pulled.
 
 ## Acceptance
 

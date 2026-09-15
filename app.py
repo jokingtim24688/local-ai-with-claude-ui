@@ -15,25 +15,29 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import tools
 import web
+import paths
 
 try:
     import ollama
 except ImportError:  # keep UI usable even if lib missing
     ollama = None
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, static_folder=os.path.join(HERE, "static"), static_url_path="")
+HERE = paths.HERE
+app = Flask(__name__, static_folder=paths.res("static"), static_url_path="")
 
 
 def load_branding() -> dict:
-    try:
-        with open(os.path.join(HERE, "branding.json"), encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"name": "Local AI", "accent": "#d9795b", "accent_soft": "#e39a80"}
+    # user override next to the app wins; else the bundled default
+    for p in (paths.data("branding.json"), paths.res("branding.json")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return {"name": "Elysium", "accent": "#c99a3a", "accent_soft": "#eac86f"}
 
-# runtime config (set in main)
-CFG = {"workdir": os.path.join(HERE, "workspace"), "skills": os.path.join(HERE, "skills")}
+# runtime config (set in main / desktop launcher)
+CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
@@ -73,7 +77,11 @@ def api_branding():
 
 @app.get("/assets/<path:name>")
 def assets(name):
-    return send_from_directory(os.path.join(HERE, "assets"), name)
+    # user override next to the app wins; else bundled
+    user = paths.data("assets", name)
+    if os.path.isfile(user):
+        return send_from_directory(paths.data("assets"), name)
+    return send_from_directory(paths.res("assets"), name)
 
 
 # ---- config / models / skills ---------------------------------------------
@@ -287,6 +295,7 @@ def main():
     ap.add_argument("--port", type=int, default=5173)
     a = ap.parse_args()
 
+    paths.seed_user_data()
     CFG["workdir"] = os.path.abspath(a.workdir)
     CFG["skills"] = os.path.abspath(a.skills)
     tools.set_sandbox(CFG["workdir"])

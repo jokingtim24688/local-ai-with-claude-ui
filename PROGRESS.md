@@ -12,6 +12,14 @@ Branch: `claude/amazing-keller-dvibe7`. Repo: jokingtim24688/local-ai-with-claud
 - Do NOT reply to self / acknowledge loops.
 - Save progress every 5 min to this file with redo instructions.
 
+## PIVOT 3: real standalone app (no running .py)
+- PyInstaller: elysium.spec + build.py + build.bat/build.sh -> dist/Elysium(.exe/.app).
+- paths.py: RES_DIR (sys._MEIPASS bundled static/assets/branding/skills) vs
+  DATA_DIR (Elysium-data next to exe: workspace, skills seeded, MEMORY).
+- app.py uses paths.res/paths.data; branding+assets allow user override next to app.
+- desktop.py = entry, seeds data, picks free port, opens pywebview window.
+- Needs Ollama installed + platform webview runtime. gitignore build/ dist/ data.
+
 ## PIVOT 2: no Electron -> our own native app
 - Dropped electron/, package.json. Use pywebview native window `desktop.py`.
 - Full branding via branding.json (name, logo, accent, window). /api/branding

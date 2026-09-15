@@ -1,62 +1,90 @@
-"""Native desktop launcher — our own app window, no Electron, no browser chrome.
+"""Elysium — native desktop launcher.
 
-Starts the Flask backend in a background thread, then opens a native window
-with pywebview. Everything (window title, logo, colors) comes from
-branding.json, so it is fully yours to change.
+This is the whole app's entry point. Packaged with PyInstaller it becomes a
+single double-clickable executable (Elysium.exe / Elysium.app / Elysium) — no
+Python install, no running individual files. In dev, just `python desktop.py`.
 
-    python desktop.py
-
-If pywebview isn't installed it falls back to opening the default browser.
+It starts the Flask backend in a background thread, then opens a native window
+(pywebview). All branding comes from branding.json.
 """
 from __future__ import annotations
 
 import json
-import os
+import socket
 import threading
 import time
 
+import paths
 import app as backend
-
-HERE = os.path.dirname(os.path.abspath(__file__))
-HOST, PORT = "127.0.0.1", 5173
 
 
 def load_branding() -> dict:
-    try:
-        with open(os.path.join(HERE, "branding.json"), encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"name": "Local AI", "window": {}}
+    for p in (paths.data("branding.json"), paths.res("branding.json")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return {"name": "Elysium", "window": {}}
 
 
-def serve():
-    backend.CFG["workdir"] = os.path.join(HERE, "workspace")
-    backend.CFG["skills"] = os.path.join(HERE, "skills")
+def free_port(preferred: int = 5173) -> int:
+    for port in (preferred, 5174, 5175, 0):
+        try:
+            s = socket.socket()
+            s.bind(("127.0.0.1", port))
+            p = s.getsockname()[1]
+            s.close()
+            return p
+        except OSError:
+            continue
+    return preferred
+
+
+HOST = "127.0.0.1"
+
+
+def serve(port: int):
+    backend.CFG["workdir"] = paths.data("workspace")
+    backend.CFG["skills"] = paths.data("skills")
     backend.tools.set_sandbox(backend.CFG["workdir"])
     backend.tools.scan_skills(backend.CFG["skills"])
-    backend.app.run(host=HOST, port=PORT, threaded=True, use_reloader=False)
+    backend.app.run(host=HOST, port=port, threaded=True, use_reloader=False)
+
+
+def wait_up(url: str, tries: int = 60):
+    import urllib.request
+    for _ in range(tries):
+        try:
+            urllib.request.urlopen(url + "/api/config", timeout=1).read()
+            return
+        except Exception:
+            time.sleep(0.25)
 
 
 def main():
+    paths.seed_user_data()
     b = load_branding()
     w = b.get("window", {})
-    threading.Thread(target=serve, daemon=True).start()
-    time.sleep(1.2)  # let Flask bind
+    port = free_port()
+    url = f"http://{HOST}:{port}"
 
-    url = f"http://{HOST}:{PORT}"
+    threading.Thread(target=serve, args=(port,), daemon=True).start()
+    wait_up(url)
+
     try:
         import webview
         webview.create_window(
-            b.get("name", "Local AI"), url,
+            b.get("name", "Elysium"), url,
             width=w.get("width", 1280), height=w.get("height", 820),
             min_size=(w.get("min_width", 900), w.get("min_height", 600)),
-            background_color="#16130f",
+            background_color="#eaf3ff",
         )
         webview.start()
     except ImportError:
         import webbrowser
         print("pywebview not installed — opening in browser.")
-        print("install for the native app:  pip install pywebview")
+        print("for the native window:  pip install pywebview")
         webbrowser.open(url)
         try:
             while True:

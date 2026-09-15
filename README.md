@@ -16,22 +16,40 @@ motion. A top-right toggle flips between three views:
 Our own native app — **no Electron**. A pure-Python launcher (`pywebview`) opens
 a native window; everything is ours to brand.
 
-## Run
+## Get the app (one double-click, no Python)
+
+Build the standalone app once, then just run it:
 
 ```bash
-pip install -r requirements.txt   # flask, ollama, pywebview
-ollama serve                      # if not running
-ollama pull qwen2.5-coder:7b      # or any coding / uncensored tag
-python desktop.py                 # opens the native app window
+pip install -r requirements.txt pyinstaller
+python build.py            # or: build.bat (Windows) / ./build.sh (mac/Linux)
 ```
 
-`desktop.py` starts the Flask backend in-process and opens the window. No cmd
-panel is shown to the user. Without `pywebview` it falls back to the browser.
+Result in `dist/`:
 
-Run the backend alone (browser at http://localhost:5173):
+- **Windows** → `dist/Elysium.exe`
+- **macOS** → `dist/Elysium.app`
+- **Linux** → `dist/Elysium`
+
+Ship/keep that one item. It needs no Python install. It creates an
+`Elysium-data/` folder next to itself for `workspace/`, `skills/`, and memory.
+(A platform webview runtime is used: WebView2 on Windows — usually preinstalled;
+WebKitGTK on Linux; WKWebView on macOS — built in.)
+
+You still need **Ollama** installed and a model pulled:
 
 ```bash
-python app.py --workdir ./workspace --skills ./skills
+ollama serve
+ollama pull qwen2.5-coder:7b   # or any coding / uncensored tag
+```
+
+## Dev run (no packaging)
+
+```bash
+pip install -r requirements.txt
+python desktop.py              # native window; backend runs in-process
+# or backend only, in a browser at http://localhost:5173:
+python app.py
 ```
 
 ## Make it yours
@@ -50,15 +68,18 @@ wordmark, logo, and theme all follow it live.
 ## Layout
 
 ```
-desktop.py         native launcher (pywebview) — our own app window
+desktop.py         app entry — native launcher (pywebview); PyInstaller target
+build.py           builds the standalone app (build.bat / build.sh wrappers)
+elysium.spec       PyInstaller spec (bundles Python, UI, skills, branding)
+paths.py           bundled-resource vs writable-data path resolution
 branding.json      name, logo, accent, window size — fully yours
 assets/logo.svg    swappable logo
 app.py             Flask: branding, models, chat SSE, tool loop, tree, VM, approval
 tools.py           tool registry + sandbox jail
 web.py             web_search / web_fetch (only on /web turns)
 static/            index.html, style.css, app.js  (the UI)
-skills/            <name>/SKILL.md
-workspace/         default sandbox (AI confined here)
+skills/            <name>/SKILL.md  (seeded into Elysium-data on first run)
+workspace/         dev sandbox (packaged app uses Elysium-data/workspace)
 ```
 
 ## VM stream
