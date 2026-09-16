@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+workspace/*
+!workspace/.gitkeep
+.venv/
+build/
+dist/
+*.egg-info/
+Elysium-data/
+
+# runtime data (dev mode writes these to repo root)
+subagents.json
+tasks.json
+bus.json
+connectors.json
+targets.json
+prompt.md
+MEMORY.md
