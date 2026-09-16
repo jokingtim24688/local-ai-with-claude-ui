@@ -10,6 +10,7 @@ It starts the Flask backend in a background thread, then opens a native window
 from __future__ import annotations
 
 import json
+import os
 import socket
 import sys
 import threading
@@ -17,6 +18,17 @@ import time
 
 import paths
 import app as backend
+
+
+def _win_icon():
+    """The app icon for the taskbar/window (Windows), if present."""
+    for p in (paths.res("assets/icon.ico"), paths.data("assets/icon.ico")):
+        try:
+            if os.path.exists(p):
+                return p
+        except Exception:
+            pass
+    return None
 
 
 def load_branding() -> dict:
@@ -94,6 +106,15 @@ def main():
     port = free_port()
     url = f"http://{HOST}:{port}"
 
+    # Windows: give the process our own taskbar identity + icon (not python's).
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "AiHeaven.Desktop.1")
+        except Exception:
+            pass
+
     threading.Thread(target=serve, args=(port,), daemon=True).start()
     wait_up(url)
 
@@ -127,7 +148,26 @@ def main():
             frameless=True, easy_drag=False, js_api=api,
         )
         api.window = window
-        webview.start()
+
+        # Force the modern WebView2 engine on Windows. If pywebview falls back to
+        # the ancient MSHTML/IE engine, the app's CSS/JS breaks and the window
+        # hangs ("not responding") — so pin edgechromium, with graceful fallbacks.
+        start_kwargs = {}
+        ico = _win_icon()
+        if ico:
+            start_kwargs["icon"] = ico
+        if sys.platform == "win32":
+            start_kwargs["gui"] = "edgechromium"
+        try:
+            webview.start(**start_kwargs)
+        except TypeError:
+            start_kwargs.pop("icon", None)           # older pywebview: no icon kwarg
+            try:
+                webview.start(**start_kwargs)
+            except Exception:
+                webview.start()
+        except Exception:
+            webview.start()                          # WebView2 missing → default engine
     except ImportError:
         import webbrowser
         print("pywebview not installed — opening in browser.")
