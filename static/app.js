@@ -490,7 +490,30 @@ async function loadVM() {
         <span class="tk-who">${esc(x.assignee || x.status)}</span></li>`).join("")
       || `<li class="empty-note">no tasks</li>`; } catch {}
 }
-function screenCard(name, stream, primary, runtime = "active", mode = "local") {
+// a grok-style cloud bot face, tinted to `color`. `pose` drives the expression:
+// look = eyes dart around (busy), sleep = eyes shut + grey (idle), happy/think/alert.
+function grokAvatar(color, pose = "look") {
+  const p = ["look", "sleep", "happy", "think", "alert"].includes(pose) ? pose : "look";
+  return `<span class="gbot pose-${p}" style="--bot:${color}" aria-hidden="true">
+    <svg viewBox="0 0 100 84" class="gbot-svg">
+      <g class="gbot-body">
+        <circle cx="30" cy="36" r="17"/><circle cx="68" cy="35" r="16"/>
+        <circle cx="21" cy="52" r="15"/><circle cx="80" cy="52" r="14"/>
+        <ellipse cx="50" cy="50" rx="35" ry="28"/>
+      </g>
+      <g class="gbot-eyes">
+        <g class="eye eye-l"><ellipse class="ball" cx="39" cy="48" rx="7" ry="9"/>
+          <circle class="pupil" cx="39" cy="48" r="3.4"/></g>
+        <g class="eye eye-r"><ellipse class="ball" cx="61" cy="48" rx="7" ry="9"/>
+          <circle class="pupil" cx="61" cy="48" r="3.4"/></g>
+      </g>
+      <g class="gbot-lids">
+        <path class="lid lid-l" d="M31 48 q8 8 16 0"/>
+        <path class="lid lid-r" d="M53 48 q8 8 16 0"/>
+      </g>
+    </svg></span>`;
+}
+function screenCard(name, stream, primary, runtime = "active", mode = "local", color = "#c99a3a", pose = "look") {
   const label = primary ? name + " · parent (2 models)" : name;
   const cls = runtime === "disabled" ? " off" : runtime === "paused" ? " paused" : "";
   const note = runtime === "disabled" ? "disabled by parent — freed for resources"
@@ -500,7 +523,8 @@ function screenCard(name, stream, primary, runtime = "active", mode = "local") {
     : "runs on this machine — give it its own VM in Customize → Subagents";
   const body = (stream && runtime === "active")
     ? `<img src="${esc(stream)}" alt="">`
-    : `<div class="vm-overlay"><span class="vm-live"><i></i>${esc(name)}</span><p>${note}</p></div>`;
+    : `<div class="vm-overlay">${grokAvatar(color, pose)}
+        <span class="vm-live">${esc(name)}</span><p>${note}</p></div>`;
   return `<div class="vm-screen ${primary ? "primary" : ""}${cls}">
       <div class="vm-tag">${esc(label)} <span class="vm-st">${esc(runtime)}</span></div>${body}</div>`;
 }
@@ -527,8 +551,8 @@ function paintVM(d) {
     const total = 1 + (d.agents || []).length;
     const cols = Math.ceil(Math.sqrt(total));           // shrink as agents grow
     grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-    let html = screenCard("main", d.stream, true, "active", d.mode);
-    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active", d.mode)));
+    let html = screenCard("main", d.stream, true, "active", d.mode, d.color || "#c99a3a", d.pose || "look");
+    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active", d.mode, a.color, a.pose)));
     grid.innerHTML = html;
   }
   $("#vm-app").innerHTML = d.app_url

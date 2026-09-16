@@ -565,6 +565,14 @@ SYS_SCHEMAS = [
         "name": "grant_skill",
         "description": "Give an existing skill to EVERY subagent (preloaded), so the whole pool has it for good.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
+    {"type": "function", "function": {
+        "name": "set_avatar",
+        "description": "Set a subagent's grok-bot avatar expression in the VM view. pose: 'look' "
+                       "(darting eyes, busy), 'sleep' (eyes closed, greyed, idle), 'happy' (great "
+                       "job), 'think' (pondering), 'alert' (needs attention), or 'auto' (follow its "
+                       "task state). Use it to signal the pool what each bot is doing.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "pose": {"type": "string"}}, "required": ["name", "pose"]}}},
 ]
 
 
@@ -588,6 +596,46 @@ def agent_runtime(sub: dict, doing: set) -> str:
     if not sub.get("enabled", True):
         return "disabled"
     return "active" if sub["name"] in doing else "paused"
+
+
+# ---- grok-bot avatars ------------------------------------------------------
+# Each agent shows a cloud-shaped face (two eyes). It gets a stable color, looks
+# around while working (runtime active), and closes its eyes + turns grey while
+# idle. The parent can override an agent's expression with set_avatar(name,pose).
+AVATAR_COLORS = [
+    "#c99a3a", "#e08a3c", "#8a5a2b", "#2b2b2b", "#d0473f",   # gold orange brown black red
+    "#d9639e", "#8a5cd0", "#3f7bd0", "#2fa6a6", "#4fbf7f",   # pink purple blue teal mint
+    "#e9e9ef", "#8b8f99",                                    # white grey
+]
+AVATAR_POSES = {"auto", "look", "sleep", "happy", "think", "alert"}
+AVATAR_POSE: dict = {}          # name -> parent-set pose (overrides the default)
+
+
+def _avatar_color(name: str, idx: int = None) -> str:
+    if idx is not None:                              # stable, distinct per pool slot
+        return AVATAR_COLORS[idx % len(AVATAR_COLORS)]
+    if not name:
+        return AVATAR_COLORS[0]
+    h = sum(ord(c) for c in name)
+    return AVATAR_COLORS[h % len(AVATAR_COLORS)]
+
+
+def _avatar_pose(name: str, runtime: str) -> str:
+    p = AVATAR_POSE.get(name, "auto")
+    if p and p != "auto":
+        return p                                    # parent override wins
+    return "look" if runtime == "active" else "sleep"
+
+
+def set_avatar(name: str, pose: str) -> str:
+    pose = (pose or "auto").lower()
+    if pose not in AVATAR_POSES:
+        return f"error: pose must be one of {', '.join(sorted(AVATAR_POSES))}"
+    if pose == "auto":
+        AVATAR_POSE.pop(name, None)
+    else:
+        AVATAR_POSE[name] = pose
+    return f"OK: {name} avatar -> {pose}"
 
 
 def sync_machines() -> str:
@@ -617,6 +665,8 @@ def dispatch_parent(name: str, args: dict):
         return sync_machines()
     if name == "grant_skill":
         return grant_skill_to_all(args.get("name", ""))
+    if name == "set_avatar":
+        return set_avatar(args.get("name", ""), args.get("pose", "auto"))
     if name == "get_system_load":
         s = system_load()
         parts = [f"cpu={s['cpu']}%", f"ram={s['ram']}%", f"cores={s['cores']}"]
@@ -942,14 +992,17 @@ def _stop_local() -> str:
 def api_vm():
     agents = []
     doing = _doing_set()
-    for s in load_subagents():
+    for i, s in enumerate(load_subagents()):
         vm = s.get("vm") or {}
         rt = agent_runtime(s, doing)          # active | paused | disabled
         agents.append({"name": s["name"], "stream": vm.get("stream", ""),
                        "enabled": s.get("enabled", True), "runtime": rt,
-                       "status": rt})
+                       "status": rt, "color": _avatar_color(s["name"], i + 1),
+                       "pose": _avatar_pose(s["name"], rt)})
     out = {k: v for k, v in VM.items() if k != "proc"}
     return jsonify({**out, "mode": _vm_mode(), "name": "main", "parent": True,
+                    "color": _avatar_color("main", 0),
+                    "pose": _avatar_pose("main", "active"),
                     "system": system_load(), "agents": agents})
 
 

@@ -222,3 +222,16 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - ICON: assets/icon.ico is valid multi-size; if Explorer/taskbar still show Python
   it's the Windows ICON CACHE. Fix after rebuild: rename the exe, or
   `ie4uinit.exe -show`; if stuck, clear IconCache + restart explorer.
+
+## PIVOT 17 — grok-bot agent avatars
+- Each agent in the VM tab now shows a grok-style cloud face (two eyes), tinted a
+  DISTINCT color per pool slot (`_avatar_color(name, idx)`, 12-color palette:
+  gold/orange/brown/black/red/pink/purple/blue/teal/mint/white/grey).
+- Built as inline SVG (`grokAvatar()` in app.js) — no PNGs, so it tints + animates.
+- States: WORKING (runtime active) = eyes open + dart around (`pose-look`).
+  IDLE/paused/disabled = eyes shut + whole bot greys out (`pose-sleep`).
+- Parent controls expression: new parent tool `set_avatar(name, pose)` with poses
+  look/sleep/happy/think/alert/auto (auto follows task state). Stored in
+  `AVATAR_POSE`, surfaced per-agent in `/api/vm` (`color`,`pose`).
+- CSS keyframes in style.css: botlook/botthink/botalert/botshut/botshake/botbob,
+  honors prefers-reduced-motion. preview_avatars.png shows all 12.
