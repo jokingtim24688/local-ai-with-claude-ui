@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import threading
 import uuid
 
@@ -858,16 +859,83 @@ def api_file():
 
 
 # ---- VM view --------------------------------------------------------------
-# The AI runs in a VM (see project docs). This backend exposes the VM's live
-# stream URL and simple lifecycle actions. Configure VM_STREAM to point at the
-# VM's VNC/MJPEG/WebRTC stream. Actions are wired to VM_* env hooks; with none
-# set they report a clear "not configured" status instead of faking success.
+# Two modes. "vm" mode (VM_STREAM / VM_HOOK_* set): shows a real VM stream and the
+# hooks drive it. "local" mode (default): the controls do real local work in the
+# sandbox — Run app serves/launches whatever the agents built (and shows it in the
+# preview pane), Open folder opens the workspace, Stop kills the run.
 
 VM = {
     "stream": os.environ.get("VM_STREAM", ""),
-    "status": "unknown",
+    "status": "idle",
     "app_url": os.environ.get("VM_APP_URL", ""),
+    "proc": None,          # the process launched by "Run app" (local mode)
 }
+
+
+def _vm_mode() -> str:
+    """'vm' when a real VM is configured (stream or hooks), else 'local'."""
+    if os.environ.get("VM_STREAM") or any(
+            os.environ.get(f"VM_HOOK_{a}") for a in ("START", "LAUNCH", "STOP", "OPEN")):
+        return "vm"
+    return "local"
+
+
+def _free_port(pref: int = 8000) -> int:
+    import socket
+    for p in (pref, pref + 1, pref + 2, 0):
+        try:
+            s = socket.socket(); s.bind(("127.0.0.1", p)); port = s.getsockname()[1]; s.close()
+            return port
+        except OSError:
+            continue
+    return pref
+
+
+def _open_path(path: str) -> None:
+    import subprocess
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
+def _run_app_local() -> str:
+    """Launch whatever the agents built in the sandbox and, for a web app, serve it
+    so the preview pane can show it. Returns a human status."""
+    import shutil
+    import subprocess
+    ws = str(tools.SANDBOX)
+    _stop_local()  # replace any previous run
+    idx = os.path.join(ws, "index.html")
+    if os.path.isfile(idx):
+        port = _free_port()
+        VM["proc"] = subprocess.Popen([sys.executable, "-m", "http.server", str(port)],
+                                      cwd=ws, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        VM["app_url"] = f"http://localhost:{port}"
+        return f"serving your app at :{port}"
+    if os.path.isfile(os.path.join(ws, "package.json")) and shutil.which("npm"):
+        VM["proc"] = subprocess.Popen("npm run dev || npm start", cwd=ws, shell=True)
+        return "npm dev server started (open the URL it prints)"
+    for entry in ("app.py", "main.py", "desktop.py"):
+        if os.path.isfile(os.path.join(ws, entry)):
+            VM["proc"] = subprocess.Popen([sys.executable, entry], cwd=ws)
+            return f"running {entry}"
+    _open_path(ws)
+    return "nothing runnable yet — opened the workspace folder"
+
+
+def _stop_local() -> str:
+    p = VM.get("proc")
+    if p and p.poll() is None:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    VM["proc"] = None
+    VM["app_url"] = os.environ.get("VM_APP_URL", "")
+    return "stopped"
 
 
 @app.get("/api/vm")
@@ -880,7 +948,8 @@ def api_vm():
         agents.append({"name": s["name"], "stream": vm.get("stream", ""),
                        "enabled": s.get("enabled", True), "runtime": rt,
                        "status": rt})
-    return jsonify({**VM, "name": "main", "parent": True,
+    out = {k: v for k, v in VM.items() if k != "proc"}
+    return jsonify({**out, "mode": _vm_mode(), "name": "main", "parent": True,
                     "system": system_load(), "agents": agents})
 
 
@@ -888,16 +957,24 @@ def api_vm():
 def api_vm_action():
     action = (request.get_json(force=True) or {}).get("action", "")
     hook = os.environ.get(f"VM_HOOK_{action.upper()}")
-    if not hook:
-        VM["status"] = f"'{action}' not configured (set VM_HOOK_{action.upper()})"
-        return jsonify(VM)
     try:
-        import subprocess
-        subprocess.Popen(hook, shell=True)
-        VM["status"] = f"{action}: launched"
+        if hook:                                   # real VM configured
+            import subprocess
+            subprocess.Popen(hook, shell=True)
+            VM["status"] = f"{action}: launched"
+        elif action in ("start", "launch"):        # local: run the built app
+            VM["status"] = _run_app_local()
+        elif action == "open":                     # local: open the sandbox folder
+            _open_path(str(tools.SANDBOX))
+            VM["status"] = "opened workspace"
+        elif action == "stop":
+            VM["status"] = _stop_local()
+        else:
+            VM["status"] = f"unknown action: {action}"
     except Exception as e:
         VM["status"] = f"{action}: error {e}"
-    return jsonify(VM)
+    out = {k: v for k, v in VM.items() if k != "proc"}
+    return jsonify({**out, "mode": _vm_mode()})
 
 
 @app.post("/api/approve")

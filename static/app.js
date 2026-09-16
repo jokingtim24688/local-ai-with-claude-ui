@@ -490,13 +490,14 @@ async function loadVM() {
         <span class="tk-who">${esc(x.assignee || x.status)}</span></li>`).join("")
       || `<li class="empty-note">no tasks</li>`; } catch {}
 }
-function screenCard(name, stream, primary, runtime = "active") {
+function screenCard(name, stream, primary, runtime = "active", mode = "local") {
   const label = primary ? name + " · parent (2 models)" : name;
   const cls = runtime === "disabled" ? " off" : runtime === "paused" ? " paused" : "";
   const note = runtime === "disabled" ? "disabled by parent — freed for resources"
     : runtime === "paused" ? "paused (no task) — VM suspended so the PC can breathe"
-    : primary ? "Set VM_STREAM to your VM's VNC / MJPEG feed."
-    : "no stream — add one in Customize → Subagents";
+    : primary && mode === "local" ? "Local mode — your agents work right here. Hit Run app to preview what they build."
+    : primary ? "waiting for the VM stream…"
+    : "runs on this machine — give it its own VM in Customize → Subagents";
   const body = (stream && runtime === "active")
     ? `<img src="${esc(stream)}" alt="">`
     : `<div class="vm-overlay"><span class="vm-live"><i></i>${esc(name)}</span><p>${note}</p></div>`;
@@ -510,7 +511,12 @@ function meter(label, v) {
     <div class="mtr-bar"><i style="width:${Math.min(100, v)}%"></i></div><b>${Math.round(v)}%</b></div>`;
 }
 function paintVM(d) {
-  $("#vm-status").textContent = "status: " + (d.status || "unknown");
+  $("#vm-status").textContent = "status: " + (d.status || "idle");
+  // label the controls for the current mode
+  const vm = d.mode === "vm";
+  if ($("#vm-start")) $("#vm-start").textContent = vm ? "Start VM" : "Run app";
+  if ($("#vm-open")) $("#vm-open").hidden = vm;         // "Open folder" is local-only
+  if ($("#vm-stop")) $("#vm-stop").textContent = "Stop";
   const sys = d.system || {};
   const sl = $("#sysload");
   if (sl) sl.innerHTML = meter("CPU", sys.cpu) + meter("RAM", sys.ram) +
@@ -521,11 +527,13 @@ function paintVM(d) {
     const total = 1 + (d.agents || []).length;
     const cols = Math.ceil(Math.sqrt(total));           // shrink as agents grow
     grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-    let html = screenCard("main", d.stream, true, "active");
-    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active")));
+    let html = screenCard("main", d.stream, true, "active", d.mode);
+    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active", d.mode)));
     grid.innerHTML = html;
   }
-  if (d.app_url) $("#vm-app").innerHTML = `<iframe src="${esc(d.app_url)}" style="width:100%;height:100%;border:0;border-radius:12px"></iframe>`;
+  $("#vm-app").innerHTML = d.app_url
+    ? `<iframe src="${esc(d.app_url)}" style="width:100%;height:100%;border:0;border-radius:12px"></iframe>`
+    : `<span>your app appears here when you Run it</span>`;
 }
 
 /* ---------- composer / chat ---------- */

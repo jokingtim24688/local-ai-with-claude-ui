@@ -209,3 +209,16 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   so content sits below the 40px bar.
 - app.js wireTitlebar(): buttons call window.pywebview.api.*; controls revealed on
   pywebviewready (hidden in plain browser). Image: preview_titlebar.png.
+
+## PIVOT 16: functional VM controls + projects square fix + icon-cache note
+- VM tab now has a "local" mode (default): api_vm_action Run app serves index.html
+  via `python -m http.server` (app_url→preview iframe) / runs package.json|app.py /
+  opens the workspace; Stop kills VM["proc"]; Open folder opens the sandbox. Real
+  VM (VM_STREAM/VM_HOOK_*) still overrides. /api/vm returns `mode`. No more
+  "not configured". Tested end-to-end (serve→fetch→stop).
+- Buttons relabel by mode (Run app/Open folder/Stop vs Start VM/Launch app/Stop).
+- Projects empty-note no longer shows the "▨" square; project bullet is a soft
+  folder glyph scoped to real items.
+- ICON: assets/icon.ico is valid multi-size; if Explorer/taskbar still show Python
+  it's the Windows ICON CACHE. Fix after rebuild: rename the exe, or
+  `ie4uinit.exe -show`; if stuck, clear IconCache + restart explorer.
