@@ -197,3 +197,15 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   PyInstaller). Icon baked in; static/assets/skills/branding.json included.
 - paths.py: FROZEN now also true under Nuitka ("__compiled__" in globals()); DATA_DIR
   uses dirname(sys.argv[0]) so AiHeaven-data lands next to the real exe for both.
+
+## PIVOT 15: custom exe icon + custom operation (title) bar
+- assets/icon.ico regenerated as a real MULTI-SIZE ICO (16/24/32/48/64/128/256)
+  from logo.svg → exe/taskbar/window show the angel-wing icon, not Python's.
+- desktop.py: window is now frameless=True with a js_api (Api.minimize/
+  toggle_maximize/close driving webview window).
+- static/index.html: custom .titlebar (logo + "Ai Heaven" + min/max/close);
+  .tb-brand has pywebview-drag-region for moving the frameless window.
+- style.css: title bar theme + body flex column; .shell flex:1, .main height:100%
+  so content sits below the 40px bar.
+- app.js wireTitlebar(): buttons call window.pywebview.api.*; controls revealed on
+  pywebviewready (hidden in plain browser). Image: preview_titlebar.png.

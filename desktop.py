@@ -99,12 +99,34 @@ def main():
 
     try:
         import webview
-        webview.create_window(
-            b.get("name", "Elysium"), url,
+
+        class Api:
+            window = None
+            _max = False
+
+            def minimize(self):
+                if self.window:
+                    self.window.minimize()
+
+            def toggle_maximize(self):
+                if not self.window:
+                    return
+                self._max = not self._max
+                self.window.maximize() if self._max else self.window.restore()
+
+            def close(self):
+                if self.window:
+                    self.window.destroy()
+
+        api = Api()
+        window = webview.create_window(
+            b.get("name", "Ai Heaven"), url,
             width=w.get("width", 1280), height=w.get("height", 820),
             min_size=(w.get("min_width", 900), w.get("min_height", 600)),
             background_color="#eaf3ff",
+            frameless=True, easy_drag=False, js_api=api,
         )
+        api.window = window
         webview.start()
     except ImportError:
         import webbrowser

@@ -14,6 +14,20 @@
 <div class="glow"></div>
 <div class="grain"></div>
 
+<!-- CUSTOM OPERATION BAR (frameless window title bar) -->
+<div class="titlebar" id="titlebar">
+  <div class="tb-brand pywebview-drag-region">
+    <img class="tb-logo" alt="" src="/assets/logo.svg">
+    <span class="tb-name">Ai Heaven</span>
+  </div>
+  <span class="spacer"></span>
+  <div class="tb-ctrls" id="tb-ctrls" hidden>
+    <button id="win-min" class="win-btn" title="Minimize" aria-label="Minimize"><span>&#8211;</span></button>
+    <button id="win-max" class="win-btn" title="Maximize" aria-label="Maximize"><span>&#9633;</span></button>
+    <button id="win-close" class="win-btn danger" title="Close" aria-label="Close"><span>&#10005;</span></button>
+  </div>
+</div>
+
 <div class="shell" id="shell">
   <!-- SIDEBAR -->
   <aside class="sidebar glass reveal" id="sidebar" style="--i:0">

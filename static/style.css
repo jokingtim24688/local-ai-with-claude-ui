@@ -581,3 +581,24 @@ button{font-family:inherit}
 
 /* model pill options a touch warmer */
 .model-pill select option{background:#fbf5ea;color:var(--ink)}
+
+/* ============ v9: custom operation bar (frameless title bar) ============ */
+body{display:flex;flex-direction:column}
+.titlebar{flex:0 0 40px;display:flex;align-items:center;gap:0;height:40px;
+  padding-left:14px;user-select:none;-webkit-user-select:none;position:relative;z-index:20;
+  background:rgba(255,252,246,.7);backdrop-filter:blur(12px) saturate(140%);
+  border-bottom:1px solid rgba(201,154,58,.22);
+  box-shadow:0 1px 0 rgba(255,255,255,.7)}
+.tb-brand{display:flex;align-items:center;gap:9px;height:100%;padding-right:14px;cursor:default}
+.tb-logo{width:20px;height:20px;filter:drop-shadow(0 2px 6px rgba(234,200,111,.6))}
+.tb-name{font-family:var(--serif);font-size:15px;color:#2b2f3d;letter-spacing:.2px}
+.tb-ctrls{display:flex;height:100%}
+.win-btn{width:46px;height:40px;border:none;background:none;cursor:pointer;
+  color:var(--ink-soft);font-size:14px;line-height:0;display:grid;place-items:center;
+  transition:background .15s,color .15s}
+.win-btn:hover{background:rgba(240,207,127,.4);color:var(--ink)}
+.win-btn.danger:hover{background:#e0544a;color:#fff}
+.win-btn:active{filter:brightness(.95)}
+/* reflow so content fills below the 40px bar */
+.shell{flex:1;min-height:0;height:auto}
+.main{height:100%}

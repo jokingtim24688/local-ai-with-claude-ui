@@ -19,6 +19,7 @@ async function init() {
   setGreeting();
   document.addEventListener("click", () => hideMenu());
   wireCollapse();
+  wireTitlebar();
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
   applyDefaultModel();
   loadTree(); loadVM();
@@ -252,6 +253,16 @@ function wireViews() {
   $$("#views button").forEach((b) => (b.onclick = () => selectView(b.dataset.view)));
   requestAnimationFrame(moveInd);
   window.addEventListener("resize", () => { moveInd(); });
+}
+function wireTitlebar() {
+  const api = () => (window.pywebview && window.pywebview.api) || null;
+  $("#win-min").onclick = () => api()?.minimize();
+  $("#win-max").onclick = () => api()?.toggle_maximize();
+  $("#win-close").onclick = () => api()?.close();
+  // window controls only make sense inside the native (pywebview) window
+  const show = () => { const c = $("#tb-ctrls"); if (c) c.hidden = false; };
+  if (window.pywebview) show();
+  window.addEventListener("pywebviewready", show);
 }
 function wireCollapse() {
   const collapse = () => $("#shell").classList.add("collapsed");
