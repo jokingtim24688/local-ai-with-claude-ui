@@ -89,10 +89,17 @@ def ensure_ollama():
     exe = shutil.which("ollama")
     if not exe:
         return
+    # low-RAM defaults: one resident model, one request at a time, smaller KV cache.
+    # setdefault -> the user's own OLLAMA_* settings always win.
+    env = dict(os.environ)
+    for k, v in (("OLLAMA_MAX_LOADED_MODELS", "1"), ("OLLAMA_NUM_PARALLEL", "1"),
+                 ("OLLAMA_FLASH_ATTENTION", "1"), ("OLLAMA_KV_CACHE_TYPE", "q8_0")):
+        env.setdefault(k, v)
     try:
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
-        subprocess.Popen([exe, "serve"], creationflags=flags) if sys.platform == "win32" \
-            else subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([exe, "serve"], creationflags=flags, env=env) if sys.platform == "win32" \
+            else subprocess.Popen([exe, "serve"], stdout=subprocess.DEVNULL,
+                                  stderr=subprocess.DEVNULL, env=env)
         time.sleep(2)
     except Exception:
         pass

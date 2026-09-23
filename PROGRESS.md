@@ -235,3 +235,18 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   `AVATAR_POSE`, surfaced per-agent in `/api/vm` (`color`,`pose`).
 - CSS keyframes in style.css: botlook/botthink/botalert/botshut/botshake/botbob,
   honors prefers-reduced-motion. preview_avatars.png shows all 12.
+
+## PIVOT 18 — one resident main model + fresh one-at-a-time subagents (low RAM)
+- Problem: 98% RAM. Main used the composer model, every subagent was pinned to
+  hermes3:8b, so 2+ models were loaded at once, plus huge subagent prompts.
+- MAIN stays loaded (`keep_alive=-1`) and now actually remembers: MEMORY.md is
+  injected into `build_system()`. Memory is compressed: `tools.squeeze()` drops
+  filler, `key: value` upsert, dedupe, 2000-char budget, `compact_memory()` runs
+  after each chat turn (resident model rewrites it; fallback drops oldest). Auto.
+- Subagents: `run_subagent` = fresh boot, role + assigned skills + brief only,
+  file tools + load_skill + MCP (no remember/bus/board), `SUB_LOCK` = one at a
+  time, reuse MAIN's model; different model → keep_alive=0. Old subagents.json
+  auto-migrated (legacy 8b model → "", old prompt.md role text → new).
+- desktop.py sets low-RAM OLLAMA_* env when it starts Ollama.
+- VM avatars: only the running subagent is active/looking.
+- Still open from before: window-drag RecursionError, PR #1 merge conflict.

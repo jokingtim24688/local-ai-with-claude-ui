@@ -514,7 +514,7 @@ function grokAvatar(color, pose = "look") {
     </svg></span>`;
 }
 function screenCard(name, stream, primary, runtime = "active", mode = "local", color = "#c99a3a", pose = "look") {
-  const label = primary ? name + " · parent (2 models)" : name;
+  const label = primary ? name + " · memory" : name;
   const cls = runtime === "disabled" ? " off" : runtime === "paused" ? " paused" : "";
   const note = runtime === "disabled" ? "disabled by parent — freed for resources"
     : runtime === "paused" ? "paused (no task) — VM suspended so the PC can breathe"

@@ -6,6 +6,7 @@ Attempts to escape via .., absolute paths, or symlinks are blocked.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -123,11 +124,55 @@ def load_skill(name: str) -> str:
     return s["body"]
 
 
-def remember(note: str) -> str:
+# Memory is kept as terse `key: value` lines so it stays tiny in the main model's
+# prompt. New notes are squeezed (filler dropped), deduped, and a note whose key
+# already exists replaces the old line instead of piling up.
+MEMORY_BUDGET = 2000          # chars; over this the app auto-compacts it
+_FILLER = re.compile(
+    r"\b(a|an|the|please|really|just|very|basically|actually|"
+    r"definitely|kind of|sort of)\b\s*", re.I)
+
+
+def squeeze(note: str) -> str:
+    s = " ".join(str(note).split())                 # collapse whitespace/newlines
+    s = _FILLER.sub("", s)
+    s = re.sub(r"\s+([,.;:])", r"\1", s).strip(" .")
+    return s[:200]
+
+
+def _mem_key(line: str):
+    m = re.match(r"\s*[-*]?\s*([A-Za-z0-9_ \-]{1,32}):\s", line)
+    return m.group(1).strip().lower() if m else None
+
+
+def memory_lines() -> list:
+    try:
+        return [l for l in _jail(MEMORY_FILE).read_text(encoding="utf-8").splitlines() if l.strip()]
+    except Exception:
+        return []
+
+
+def memory_text() -> str:
+    return "\n".join(memory_lines())
+
+
+def write_memory(lines: list) -> None:
     p = _jail(MEMORY_FILE)
-    with p.open("a", encoding="utf-8") as fh:
-        fh.write(note.rstrip() + "\n")
-    return f"OK: remembered ({len(note)} chars)"
+    p.write_text("\n".join(l for l in lines if l.strip()) + "\n", encoding="utf-8")
+
+
+def remember(note: str) -> str:
+    s = squeeze(note)
+    if not s:
+        return "error: empty note"
+    lines = memory_lines()
+    key = _mem_key(s)
+    if key:
+        lines = [l for l in lines if _mem_key(l) != key]     # upsert by key
+    lines = [l for l in lines if l.strip().lower() != s.lower()]
+    lines.append(s)
+    write_memory(lines)
+    return f"OK: remembered ({len(s)} chars, memory {sum(len(l) + 1 for l in lines)}/{MEMORY_BUDGET})"
 
 
 # ---- registry --------------------------------------------------------------
@@ -178,7 +223,7 @@ SCHEMAS = [
         "name": "load_skill", "description": "Load a skill body by name.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},
     {"type": "function", "function": {
-        "name": "remember", "description": "Append a note to persistent memory.",
+        "name": "remember", "description": "Save one terse fact to persistent memory as `key: value` (same key replaces the old value). Auto-approved; memory auto-compacts.",
         "parameters": {"type": "object", "properties": {"note": {"type": "string"}}, "required": ["note"]}}},
 ]
 

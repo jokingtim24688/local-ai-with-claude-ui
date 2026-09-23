@@ -37,14 +37,20 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
 ```
 
 ## Agent model (see HANDOFF.md for the contract)
-- **Parent** = 2 models in one VM (prompt-maker + skill-maker). Writes the shared
-  `prompt.md` (format: `name: task` lines + `all:` lines), makes skills via
-  `create_skill`, watches CPU/RAM/GPU (`get_system_load`), and `disable_agent`s /
-  `sync_machines` to keep the PC responsive. Pool = hermes3/dolphin subagents:
-  buddy, designer, researcher, tester, reviewer, porter.
-- **Shared storage** (one sandbox), **agent bus** (send/read_agent_messages), and a
-  **task board** (add/claim≤2/complete/review→redo). Parent affirms approved work
-  and grants a new skill to the whole pool when an agent keeps missing.
+- **MAIN** = ONE resident model (the composer pick, `keep_alive=-1`) with
+  **persistent memory**: `MEMORY.md` as terse `key: value` lines, injected into its
+  system prompt every turn. `remember` is auto-approved, squeezes filler, and a
+  same-key note overwrites the old one. Over 2000 chars → auto-compacted after the turn
+  by the same resident model (fallback: drop oldest lines). No approval needed.
+- **Subagents** (buddy, designer, researcher, tester, reviewer, porter) boot **FRESH**
+  per `spawn_subagent`: role + assigned skills + MAIN's brief only (no memory, chat,
+  prompt.md, bus or board). They run **one at a time** (`SUB_LOCK`) and reuse MAIN's
+  model (`model: ""`), so only one set of weights sits in RAM. A subagent with a
+  different model unloads right after (`keep_alive=0`).
+- When the app starts Ollama itself, it sets `OLLAMA_MAX_LOADED_MODELS=1`,
+  `NUM_PARALLEL=1`, `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q8_0` (the user's env wins).
+- The VM tab avatar looks around only on the subagent running now (`RUNNING_SUB`).
+- Low-RAM pick: `ollama pull hermes3:3b` (~2 GB).
 - **Views**: Chat / IDE / VM / Terminal (segmented switcher, top-right).
 
 ## Backend API (keep event/field names stable, or change both sides at once)

@@ -43,32 +43,23 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are the PARENT — two models working together in one VM: a
-PROMPT-MAKER half and a SKILL-MAKER half. You manage a pool of lower subagents.
-- Prompt-maker: turn the user's request into a precise brief and write prompt.md
-  with write_file, ONE LINE PER AGENT — `agentname: what that agent should do` —
-  plus `all: <shared goal>` lines the whole pool follows. Each subagent is fed only
-  its own lines and the `all:` lines. Break work into tasks with add_task. Rewrite
-  prompt.md whenever the goal changes; announce on the bus.
-- Skill-maker: when the pool needs a capability no agent has, create it yourself
-  with create_skill(name, desc, body). It loads live for every agent.
-- Your two halves normally split (one prompts, one makes skills); when one isn't
-  needed, both work the current job together.
-- Delegate with spawn_subagent and coordinate over the bus: design -> "designer",
-  research -> "researcher", tests -> "tester", review -> "reviewer", building -> "buddy".
-- You are the parent: go help a subagent that is stuck, and affirm good work — when
-  the reviewer approves a task the doer is thanked automatically; reinforce it too.
-- SECOND REVIEW + skill provisioning: after the reviewer, look at the work yourself.
-  If a subagent keeps missing (a task redone 2+ times, or weak design/code), decide
-  what skill it lacks, create_skill it ONCE, then grant_skill(name) so EVERY agent
-  gets it permanently (nobody has to remake it next time), and tell that agent to
-  try again. Prefer fixing the pool's capability over redoing by hand.
-- WATCH THE MACHINE: call get_system_load before spawning agents. If CPU/GPU/RAM
-  are high, do NOT add more agents. Call sync_machines to pause idle agents (their
-  VM suspends so the PC can breathe) and wake ones with work. If you have too many,
-  disable one whose task another agent can do with disable_agent(name) — its task is
-  auto-requeued. Re-enable with enable_agent when load drops. Keep the PC responsive.
-All agents share the same sandbox (same storage) and the full skill library.
+SYSTEM_PROMPT = """You are MAIN — the one resident agent. You stay loaded, you keep
+memory, and you direct subagents.
+- MEMORY: the MEMORY block below is what you learned before. Trust it. When you
+  learn something worth keeping (user preference, decision, project state, path),
+  call remember("key: value") — one short fact, no filler. Same key overwrites.
+- SUBAGENTS are one-shot workers booted FRESH each time: they know NOTHING — no
+  memory, no chat, no prompt.md. Each spawn_subagent task must be a full brief:
+  goal, exact files/paths, constraints, and what "done" looks like.
+- Run ONE subagent at a time. Read its result, check it, then pick the next step.
+  design -> "designer", research -> "researcher", tests -> "tester",
+  review -> "reviewer", building -> "buddy", Windows porting -> "porter".
+- If a subagent keeps missing (weak work twice), create_skill what it lacks ONCE,
+  grant_skill it to the pool, and re-brief it. Affirm good work.
+- Track multi-step work on the task board (add_task / list_tasks).
+- WATCH THE MACHINE: get_system_load if things feel slow; disable_agent a subagent
+  that isn't needed.
+All agents share one sandbox and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
 - You have real tools. An action counts as done ONLY when a tool returns OK.
@@ -79,44 +70,42 @@ Skills available (load full body with load_skill):
 {skills}
 """
 
-POOL_MODEL = "hermes3:8b"  # smart + strong tool-calling + lightly aligned; ~same RAM as dolphin3
+POOL_MODEL = ""            # "" = subagents reuse the main model (one set of weights in RAM)
 DOLPHIN = POOL_MODEL       # (kept name for compatibility)
+LEGACY_POOL_MODELS = {"hermes3:8b", "dolphin3:8b", "dolphin3"}   # old seeded defaults
 
 DEFAULT_SUBAGENTS = [
     {"id": "buddy", "name": "buddy",
-     "desc": "general builder — claims tasks and writes code per prompt.md",
-     "system": "You are BUDDY, a builder. Claim up to 2 tasks, follow prompt.md, write the "
-               "code, mark each done, then claim the next. Coordinate on the bus.",
+     "desc": "general builder — writes the code MAIN briefs it on",
+     "system": "You are BUDDY, a builder. Write the code the brief asks for, run it if "
+               "you can, and report exactly what you changed.",
      "model": DOLPHIN, "skills": [], "vm": None},
     {"id": "designer", "name": "designer",
      "desc": "designs UX, UI, and architecture — specs, not final code",
-     "system": "You are the DESIGNER. Produce specs, UX flows, and architecture per "
-               "prompt.md. Post decisions to the bus. Do not write final code.",
+     "system": "You are the DESIGNER. Produce the spec, UX flow or architecture the brief "
+               "asks for. Write it to the file named in the brief. No final code.",
      "model": DOLPHIN, "skills": ["ui-design", "frontend-polish"], "vm": None},
     {"id": "researcher", "name": "researcher",
      "desc": "researches approaches, APIs, values; reports findings",
-     "system": "You are the RESEARCHER. Investigate approaches, APIs, and good defaults "
-               "for the tasks in prompt.md. Report concise findings to the bus.",
+     "system": "You are the RESEARCHER. Investigate what the brief asks and reply with "
+               "concise findings: options, recommended pick, key values.",
      "model": DOLPHIN, "skills": ["web-research"], "vm": None},
     {"id": "tester", "name": "tester",
      "desc": "writes and runs tests, reports pass/fail",
-     "system": "You are the TESTER. Test what the builders make against prompt.md and "
-               "report pass/fail on the bus.",
+     "system": "You are the TESTER. Test what the brief names, run the tests, and report "
+               "pass/fail with the failing output.",
      "model": DOLPHIN, "skills": [], "vm": None},
     {"id": "reviewer", "name": "reviewer",
-     "desc": "reviews code & design against prompt.md; sends work back to redo if it disagrees",
-     "system": "You are the REVIEWER. For each task marked done, check the code AND the "
-               "design against prompt.md. If you disagree with either, call review_task with "
-               "verdict 'redo' and a clear reason — it goes back to the queue for another "
-               "agent. Only approve work that meets prompt.md.",
+     "desc": "reviews code & design against the brief; says approve or redo",
+     "system": "You are the REVIEWER. Check the code and design the brief points at. "
+               "Reply APPROVE, or REDO with clear reasons and exact fixes.",
      "model": DOLPHIN, "skills": ["code-review"], "vm": None},
     {"id": "porter", "name": "porter",
      "desc": "makes everything run on Windows — knows both OSes and converts Linux-only commands",
-     "system": "You are the PORTER. The agent VMs are Linux but the app runs on the user's "
-               "Windows machine. Before anything ships, make it run on Windows: prefer portable "
-               "Python/Node/git; convert Linux-only shell to Windows (cmd/PowerShell) using the "
-               "cross-platform-shell skill; when a script is needed, emit BOTH a .sh (Linux VM) "
-               "and a .bat/.ps1 (Windows). Verify on the Windows host, not just the Linux VM.",
+     "system": "You are the PORTER. Make what the brief names run on Windows: prefer "
+               "portable Python/Node/git; convert Linux-only shell to cmd/PowerShell using "
+               "the cross-platform-shell skill; when a script is needed, emit BOTH .sh and "
+               ".bat/.ps1.",
      "model": DOLPHIN, "skills": ["cross-platform-shell", "vscode-windows-dev"], "vm": None},
 ]
 
@@ -155,7 +144,37 @@ def build_system() -> str:
     p = read_prompt()
     if p:
         base += ("\n\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
+    mem = tools.memory_text()
+    base += "\n\n# MEMORY (persistent — what you learned before)\n" + (
+        mem[-tools.MEMORY_BUDGET:] if mem else "(empty)")
     return base
+
+
+def compact_memory(client, model: str) -> None:
+    """Squash MEMORY.md back under budget, automatically (no approval). Uses the
+    already-resident main model, so it costs no extra RAM. Falls back to keeping
+    the newest lines if the model fails."""
+    lines = tools.memory_lines()
+    if sum(len(l) + 1 for l in lines) <= tools.MEMORY_BUDGET:
+        return
+    target = tools.MEMORY_BUDGET * 6 // 10
+    try:
+        r = client.chat(model=model, stream=False, keep_alive=-1, messages=[
+            {"role": "system", "content":
+                "Compress this memory. Output ONLY lines of `key: value`, one fact "
+                "each, no filler words, merge duplicates, drop stale/contradicted "
+                f"facts (newer lines win). Total under {target} characters."},
+            {"role": "user", "content": "\n".join(lines)}])
+        out = (r.get("message", {}) or {}).get("content", "")
+        new = [tools.squeeze(l) for l in out.splitlines()]
+        new = [l for l in new if ":" in l]
+        if new and sum(len(l) + 1 for l in new) < sum(len(l) + 1 for l in lines):
+            lines = new
+    except Exception:
+        pass
+    while lines and sum(len(l) + 1 for l in lines) > tools.MEMORY_BUDGET:
+        lines.pop(0)                                  # oldest out first
+    tools.write_memory(lines)
 
 
 def sse(event: str, data) -> str:
@@ -233,9 +252,26 @@ def _subagents_path() -> str:
 def load_subagents() -> list:
     try:
         with open(_subagents_path(), encoding="utf-8") as f:
-            return json.load(f)
+            items = json.load(f)
     except Exception:
         return []
+    # migrate: old seeds pinned every subagent to its own 8b model -> reuse main's
+    changed = False
+    defaults = {d["id"]: d for d in DEFAULT_SUBAGENTS}
+    for s in items:
+        if s.get("model") in LEGACY_POOL_MODELS:
+            s["model"] = ""
+            changed = True
+        d = defaults.get(s.get("id"))
+        if d and "prompt.md" in (s.get("system") or ""):   # old pool-era role text
+            s["system"], s["desc"] = d["system"], d["desc"]
+            changed = True
+    if changed:
+        try:
+            save_subagents(items)
+        except Exception:
+            pass
+    return items
 
 
 def save_subagents(items: list) -> None:
@@ -595,7 +631,7 @@ def _doing_set() -> set:
 def agent_runtime(sub: dict, doing: set) -> str:
     if not sub.get("enabled", True):
         return "disabled"
-    return "active" if sub["name"] in doing else "paused"
+    return "active" if sub["name"] == RUNNING_SUB["name"] else "paused"
 
 
 # ---- grok-bot avatars ------------------------------------------------------
@@ -642,13 +678,12 @@ def sync_machines() -> str:
     """Suspend the VM of every idle agent, resume every agent with a live task.
     Runs the agent's vm.suspend / vm.resume hook when set; otherwise just reports
     the intended state (in-process agents need no VM)."""
-    doing = _doing_set()
     import subprocess
     out = []
     for s in load_subagents():
         if not s.get("enabled", True):
             continue
-        state = "active" if s["name"] in doing else "paused"
+        state = "active" if s["name"] == RUNNING_SUB["name"] else "paused"
         vm = s.get("vm") or {}
         hook = vm.get("resume" if state == "active" else "suspend")
         if hook:
@@ -814,36 +849,46 @@ def dispatch_bus(name: str, args: dict, who: str):
     return None
 
 
+SUB_LOCK = threading.Lock()          # one subagent at a time, across all chats
+RUNNING_SUB = {"name": ""}           # who is working right now (drives the VM avatars)
+
+
 def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
-    """Run a nested tool-loop for one subagent and return its final answer.
-    Runs autonomously (no approval modal) but stays inside the sandbox."""
+    """Boot one subagent FRESH, run its tool loop, return its answer. It sees only
+    its role, its assigned skills and MAIN's brief — no memory, chat or prompt.md —
+    so its prompt (and KV cache) stays small. Autonomous, but jailed in the sandbox."""
+    with SUB_LOCK:
+        RUNNING_SUB["name"] = sub.get("name", "subagent")
+        try:
+            return _run_subagent(client, default_model, sub, task)
+        finally:
+            RUNNING_SUB["name"] = ""
+
+
+def _run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     who = sub.get("name", "subagent")
-    sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse."]
-    p = read_prompt_for(who)      # only the lines addressed to this agent + `all:`
-    if p:
-        sys_lines.append("\n# YOUR STANDING PROMPT (from prompt.md — always follow)\n" + p)
-    # every subagent gets the whole skill library: roster in the prompt, full
-    # bodies loadable on demand via load_skill (same as the main agent).
-    roster = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
-    if roster:
-        sys_lines.append("\nSkills available (load full body with load_skill):\n"
-                         + "\n".join(roster))
-    # preload the bodies this subagent is explicitly assigned
-    for name in sub.get("skills", []):
+    sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse.",
+                 "You were booted fresh for ONE job. Do exactly the brief, then reply "
+                 "with a short result: what you did, files touched, anything unfinished. "
+                 "More skills: load_skill(name)."]
+    for name in sub.get("skills", []):              # preload only its assigned skills
         s = tools.SKILLS.get(name)
         if s:
             sys_lines.append(f"\n# skill: {name}\n{s['body']}")
     msgs = [{"role": "system", "content": "\n".join(sys_lines)},
             {"role": "user", "content": task}]
     model = sub.get("model") or default_model
+    # same model as MAIN -> already resident. A different one unloads when done.
+    keep = -1 if model == default_model else 0
     import connectors as C
     mcp_schemas, mcp_index = C.list_tools(load_connectors())
-    schemas = list(tools.SCHEMAS) + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + mcp_schemas
+    # file tools + load_skill + MCP. No memory/bus/board: MAIN owns those.
+    schemas = [x for x in tools.SCHEMAS if x["function"]["name"] != "remember"] + mcp_schemas
     log = []
     for _ in range(6):
         acc = ""
         calls = []
-        for chunk in client.chat(model=model, messages=msgs,
+        for chunk in client.chat(model=model, messages=msgs, keep_alive=keep,
                                  tools=schemas, stream=True):
             m = chunk.get("message", {})
             acc += m.get("content") or ""
@@ -870,7 +915,8 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
                 if r is None:
                     r = dispatch_skill(nm, args, who)
                 if r is None:
-                    r = tools.run_tool(nm, args)
+                    r = ("error: only MAIN keeps memory" if nm == "remember"
+                         else tools.run_tool(nm, args))
             log.append(f"{nm}→{r[:40]}")
             msgs.append({"role": "tool", "content": r})
     return (acc.strip() if acc else "subagent hit step limit") + (
@@ -1085,7 +1131,7 @@ def api_chat():
                 names = ", ".join(s["name"] for s in subs)
                 schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + SYS_SCHEMAS + [{"type": "function", "function": {
                     "name": "spawn_subagent",
-                    "description": f"Delegate a self-contained task to a subagent (its own VM, shared storage). Available: {names}.",
+                    "description": f"Boot a subagent FRESH for one job and get its result. It knows nothing else, so `task` must be a full brief (goal, files, constraints, done-when). One at a time. Available: {names}.",
                     "parameters": {"type": "object", "properties": {
                         "name": {"type": "string"}, "task": {"type": "string"}},
                         "required": ["name", "task"]}}}]
@@ -1094,7 +1140,7 @@ def api_chat():
             for _ in range(12):  # tool-loop cap
                 acc = ""
                 calls = []
-                resp = client.chat(model=model, messages=msgs,
+                resp = client.chat(model=model, messages=msgs, keep_alive=-1,
                                     tools=schemas, stream=True)
                 for chunk in resp:
                     msg = chunk.get("message", {})
@@ -1157,6 +1203,10 @@ def api_chat():
                     msgs.append({"role": "tool", "content": result})
         except Exception as e:
             yield sse("error", str(e))
+        try:
+            compact_memory(client, model)      # auto, no approval; resident model
+        except Exception:
+            pass
         yield sse("done", {})
 
     return Response(stream(), mimetype="text/event-stream")
