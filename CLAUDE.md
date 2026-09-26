@@ -65,13 +65,24 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   folders (`apps.json`) only. `num_ctx` 8192 for MAIN and workers.
 - When the app starts Ollama itself, it sets `OLLAMA_MAX_LOADED_MODELS=1`,
   `NUM_PARALLEL=1`, `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q8_0` (the user's env wins).
-- The VM tab avatar looks around only on the subagent running now (`RUNNING_SUB`).
+- Agents run in the background (no VM/Terminal tabs any more; `/api/vm` etc. remain
+  for tooling). **Connectors** are always configured but a chat only gets a connector's
+  MCP tools after the user mentions it there; the UI stores it per chat
+  (`convo.connectors`) and sends it as a chat-only system instruction +
+  `/api/chat` `connectors` (workers inherit the same set).
+- **Startup** (`startup_apps` -> `apps.start_setup`): Roblox Studio + Unreal Engine are
+  checked; missing -> winget/Homebrew install (Roblox Studio directly; Unreal via the
+  Epic Games Launcher, which needs the user's Epic sign-in once), then both start
+  minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
+  log at `/api/apps/setup`.
 - Low-RAM pick: `ollama pull hermes3:3b` (~2 GB).
-- **Views**: Chat / IDE / VM / Terminal (segmented switcher, top-right).
+- **Views**: Chat / IDE. The IDE is Antigravity-style (explorer | tabbed editor |
+  Agent panel); opening it moves the one chat DOM into the Agent panel and the sidebar
+  exits with the "into the light" animation (`.to-light` / `.from-light`).
 
 ## Backend API (keep event/field names stable, or change both sides at once)
 `/api/branding /config /settings /models /skills /memory /tree /file /vm /system /tasks
-/bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch) /open-url
+/bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
 /git/{status,diff,push} /chat(SSE) /approve`
 SSE events: `token, tool_call, tool_result, approval, error, done`.
 

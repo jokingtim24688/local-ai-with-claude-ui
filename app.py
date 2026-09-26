@@ -85,7 +85,9 @@ def _settings_path() -> str:
 def load_settings() -> dict:
     """User settings (Customize). worker_model = the low-power model subagents use."""
     b = load_branding()
-    d = {"worker_model": b.get("worker_model", "qwen2.5-coder:3b")}
+    d = {"worker_model": b.get("worker_model", "qwen2.5-coder:3b"),
+         "auto_setup": True,        # install Roblox Studio / Unreal (launcher) if missing
+         "launch_on_start": True}   # start them in the background when the app opens
     try:
         with open(_settings_path(), encoding="utf-8") as f:
             d.update({k: v for k, v in json.load(f).items() if k in d})
@@ -328,6 +330,25 @@ def api_apps_launch():
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.get("/api/apps/setup")
+def api_apps_setup():
+    return jsonify(apps.SETUP)
+
+
+@app.post("/api/apps/setup")
+def api_apps_setup_run():
+    st = load_settings()
+    apps.start_setup(install=True, launch=st["launch_on_start"])
+    return jsonify({"ok": True})
+
+
+def startup_apps() -> None:
+    """Called once when the app starts (desktop.py / app.py main)."""
+    st = load_settings()
+    if st["auto_setup"] or st["launch_on_start"]:
+        apps.start_setup(install=st["auto_setup"], launch=st["launch_on_start"])
+
+
 @app.post("/api/apps/docs/prefetch")
 def api_apps_prefetch():
     return jsonify(apps.prefetch_docs((request.get_json(force=True) or {}).get("app", "")))
@@ -521,6 +542,13 @@ def load_connectors() -> list:
             return json.load(f)
     except Exception:
         return []
+
+
+def chat_connectors(names) -> list:
+    """Connectors are always configured/ready, but a chat only gets the tools of the
+    ones it asked for (the UI remembers them per chat after the first mention)."""
+    want = {str(n).lower() for n in (names or [])}
+    return [c for c in load_connectors() if str(c.get("name", "")).lower() in want]
 
 
 def save_connectors(items: list) -> None:
@@ -1001,14 +1029,14 @@ SUB_LOCK = threading.Lock()          # one subagent at a time, across all chats
 RUNNING_SUB = {"name": ""}           # who is working right now (drives the VM avatars)
 
 
-def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
+def run_subagent(client, default_model: str, sub: dict, task: str, connectors=None) -> str:
     """Boot one subagent FRESH, run its tool loop, return its answer. It sees only
     its role, its assigned skills and MAIN's brief — no memory, chat or prompt.md —
     so its prompt (and KV cache) stays small. Autonomous, but jailed in the sandbox."""
     with SUB_LOCK:
         RUNNING_SUB["name"] = sub.get("name", "subagent")
         try:
-            return _run_subagent(client, default_model, sub, task)
+            return _run_subagent(client, default_model, sub, task, connectors)
         finally:
             RUNNING_SUB["name"] = ""
 
@@ -1083,7 +1111,7 @@ def _auto_checks(files: list) -> list:
     return out
 
 
-def _run_subagent(client, default_model: str, sub: dict, task: str) -> str:
+def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=None) -> str:
     who = sub.get("name", "subagent")
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse.",
                  "You were booted fresh for ONE job. Write the files the brief asks for with "
@@ -1100,8 +1128,8 @@ def _run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     # same model as MAIN -> already resident. A different one unloads when done.
     keep = -1 if model == default_model else 0
     import connectors as C
-    mcp_schemas, mcp_index = C.list_tools(load_connectors())
-    # file tools + load_skill + MCP. No memory/bus/board/apps: MAIN owns those.
+    mcp_schemas, mcp_index = C.list_tools(chat_connectors(connectors)) if connectors else ([], {})
+    # file tools + load_skill + this chat's connectors. No memory/bus/board/apps: MAIN owns those.
     schemas = [x for x in tools.SCHEMAS if x["function"]["name"] != "remember"] + mcp_schemas
     log, touched, acc = [], [], ""
     for _ in range(10):
@@ -1353,7 +1381,8 @@ def api_chat():
 
         subs = load_subagents()
         import connectors as C
-        mcp_schemas, mcp_index = C.list_tools(load_connectors())
+        active = body.get("connectors") or []           # this chat's connectors only
+        mcp_schemas, mcp_index = C.list_tools(chat_connectors(active)) if active else ([], {})
         schemas = None
         if tool_mode:
             schemas = list(tools.SCHEMAS) + apps.SCHEMAS + mcp_schemas
@@ -1423,7 +1452,7 @@ def api_chat():
                         if sub and not sub.get("enabled", True):
                             result = f"error: '{sub['name']}' is disabled (freed for resources)"
                         else:
-                            result = (run_subagent(client, model, sub, args.get("task", ""))
+                            result = (run_subagent(client, model, sub, args.get("task", ""), active)
                                       if sub else f"error: no subagent '{args.get('name')}'")
                     elif name in apps.REGISTRY:
                         result = apps.run_tool(name, args)
@@ -1460,6 +1489,7 @@ def main():
     tools.set_sandbox(CFG["workdir"])
     tools.scan_skills(CFG["skills"])
     seed_default_subagents()
+    startup_apps()
 
     print(f"workdir (sandbox): {tools.SANDBOX}")
     print(f"skills: {CFG['skills']}  ({len(tools.SKILLS)} loaded)")

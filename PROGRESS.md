@@ -270,3 +270,18 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
   Mocha on all code, static/hl.js highlighter + chat markdown, Apps tab, worker model
   picker, bundled OFL fonts, crescent logo. Previews regenerated (preview_*.png).
 - Still open: PR #1 README conflict (waiting on the user: keep both / app docs / notes).
+
+## PIVOT 20 — Chat + IDE only, Antigravity IDE, per-chat connectors, app auto-setup
+- VM + Terminal tabs removed from the UI (agents keep running in the background).
+- IDE: explorer | tabbed editor (breadcrumb, status bar) | Agent panel. The chat
+  thread + composer MOVE into the Agent panel (one chat, no sync); files the agent
+  writes open as tabs. Sidebar leaves with an "into the light" animation and returns.
+- Connectors: always configured; a chat gets a connector's tools only after it's
+  mentioned in that chat, then it stays on for that chat (chip above the composer,
+  chat-only system instruction, `/api/chat` `connectors`; workers inherit).
+- Startup: Roblox Studio + Unreal Engine checked, installed if missing (winget /
+  Homebrew; Unreal through the Epic launcher = needs the user's Epic sign-in once),
+  launched minimized unless RAM >= 85%. Settings + log in Customize -> Apps.
+- NOTE: winget ids (Roblox.RobloxStudio, EpicGames.EpicGamesLauncher), brew casks
+  (roblox-studio/robloxstudio, epic-games) and the Roblox installer URL couldn't be
+  verified from the cloud sandbox; every step falls back to the next and logs.

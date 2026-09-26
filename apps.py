@@ -511,3 +511,194 @@ def run_tool(name: str, args: dict) -> str:
         return f"error: bad arguments for {name}: {e}"
     except Exception as e:
         return f"error: {name} failed: {e}"
+
+
+# ---- startup: install if missing, launch in the background ------------------
+# Roblox Studio installs unattended. Unreal Engine can't: Epic only ships it through
+# the Epic Games Launcher behind an Epic sign-in, so we install the launcher and open
+# its Unreal Engine page for the user (one-time). Everything is logged to SETUP.
+
+import threading
+import time
+
+SETUP = {"running": False, "done": False, "log": []}
+_SETUP_LOCK = threading.Lock()
+EPIC_UE_URI = "com.epicgames.launcher://ue"
+ROBLOX_STUDIO_PAGE = "https://create.roblox.com/docs/studio/setup"
+
+
+def _log(msg: str) -> None:
+    SETUP["log"].append(time.strftime("%H:%M:%S ") + msg)
+    del SETUP["log"][:-60]
+
+
+def find_epic_launcher() -> str | None:
+    if WIN:
+        return _newest([r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe",
+                        r"C:\Program Files (x86)\Epic Games\Launcher\Portal\Binaries\Win32\EpicGamesLauncher.exe",
+                        r"C:\Program Files\Epic Games\Launcher\Portal\Binaries\Win64\EpicGamesLauncher.exe"])
+    if MAC:
+        for c in ("/Applications/Epic Games Launcher.app",
+                  os.path.join(HOME, "Applications/Epic Games Launcher.app")):
+            if os.path.isdir(c):
+                return c
+    return None
+
+
+def _try(cmd: list, timeout: int = 1800) -> bool:
+    """Run an installer command; True on exit 0. Missing tool -> False."""
+    if not shutil.which(cmd[0]):
+        return False
+    _log("$ " + " ".join(cmd))
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, errors="replace")
+    except Exception as e:
+        _log(f"  failed: {e}")
+        return False
+    tail = (r.stdout or r.stderr or "").strip().splitlines()[-1:] or [""]
+    _log(f"  exit {r.returncode} {tail[0][:160]}")
+    return r.returncode == 0
+
+
+def _winget(pkg: str) -> bool:
+    return _try(["winget", "install", "-e", "--id", pkg, "--silent",
+                 "--accept-package-agreements", "--accept-source-agreements"])
+
+
+def _brew_cask(*names) -> bool:
+    return any(_try(["brew", "install", "--cask", n]) for n in names)
+
+
+def _open_uri(uri: str) -> None:
+    try:
+        if WIN:
+            os.startfile(uri)  # type: ignore[attr-defined]
+        elif MAC:
+            subprocess.Popen(["open", uri])
+        else:
+            subprocess.Popen(["xdg-open", uri])
+    except Exception as e:
+        _log(f"  couldn't open {uri}: {e}")
+
+
+def install_roblox() -> bool:
+    _log("Roblox Studio not found — installing")
+    ok = False
+    if WIN:
+        ok = _winget("Roblox.RobloxStudio")
+        if not ok:   # official bootstrapper: installs itself for the current user
+            try:
+                exe = os.path.join(paths.data("downloads"), "RobloxStudioInstaller.exe")
+                os.makedirs(os.path.dirname(exe), exist_ok=True)
+                _log("downloading the official Roblox Studio installer")
+                urllib.request.urlretrieve("https://setup.rbxcdn.com/RobloxStudioInstaller.exe", exe)
+                ok = subprocess.run([exe], timeout=1800).returncode == 0
+            except Exception as e:
+                _log(f"  installer download failed: {e}")
+    elif MAC:
+        ok = _brew_cask("roblox-studio", "robloxstudio")
+    if ok and find_roblox():
+        _log("Roblox Studio installed")
+        return True
+    _log("couldn't install Roblox Studio automatically — opening the download page")
+    _open_uri(ROBLOX_STUDIO_PAGE)
+    return False
+
+
+def install_unreal() -> None:
+    _log("Unreal Engine not found")
+    if not find_epic_launcher():
+        _log("installing the Epic Games Launcher (Unreal Engine ships through it)")
+        if WIN:
+            _winget("EpicGames.EpicGamesLauncher")
+        elif MAC:
+            _brew_cask("epic-games")
+    if find_epic_launcher():
+        _log("ONE-TIME STEP: sign in to the Epic Games Launcher -> Unreal Engine -> Install "
+             "(Epic requires your account; it can't be installed silently)")
+        _open_uri(EPIC_UE_URI)
+    else:
+        _log("couldn't install the Epic Games Launcher — get it from "
+             "https://store.epicgames.com/download")
+
+
+def _running(*names) -> bool:
+    try:
+        import psutil
+        want = {n.lower() for n in names}
+        return any((p.info.get("name") or "").lower() in want for p in psutil.process_iter(["name"]))
+    except Exception:
+        return False
+
+
+def _ram_busy(limit: float = 85.0) -> float | None:
+    try:
+        import psutil
+        pct = psutil.virtual_memory().percent
+        return pct if pct >= limit else None
+    except Exception:
+        return None
+
+
+def launch_background(exe: str) -> None:
+    """Start a GUI app minimized / hidden, without stealing focus."""
+    if MAC:
+        app = exe.split("/Contents/")[0] if "/Contents/" in exe else exe
+        subprocess.Popen(["open", "-g", "-j", "-a", app])
+        return
+    kw = {"cwd": os.path.dirname(exe), "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if WIN:
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 7                        # SW_SHOWMINNOACTIVE
+        kw.update(startupinfo=si, creationflags=0x00000008 | 0x00000200)
+    else:
+        kw["start_new_session"] = True
+    subprocess.Popen([exe], **kw)
+
+
+def run_setup(install: bool = True, launch: bool = True) -> None:
+    """Startup pass: make sure Roblox Studio + Unreal Engine are there, then start
+    them in the background. Safe to call again; one pass at a time."""
+    if not _SETUP_LOCK.acquire(blocking=False):
+        return
+    SETUP.update(running=True, done=False)
+    try:
+        roblox = find_roblox() or app_path("roblox")
+        if not roblox and install:
+            install_roblox()
+            roblox = find_roblox()
+        unreal = find_unreal(gui=True) or app_path("unreal")
+        if unreal and unreal.endswith("-Cmd.exe") and os.path.isfile(unreal.replace("-Cmd.exe", ".exe")):
+            unreal = unreal.replace("-Cmd.exe", ".exe")          # launch the windowed editor
+        if not unreal and install:
+            install_unreal()
+        _log(f"Roblox Studio: {'ready' if roblox else 'missing'} · "
+             f"Unreal Engine: {'ready' if unreal else 'waiting for the Epic launcher install'}")
+        if launch:
+            busy = _ram_busy()
+            if busy:
+                _log(f"not launching apps in the background: RAM already at {busy:.0f}%")
+            else:
+                for label, exe, procs in (
+                        ("Roblox Studio", roblox, ("RobloxStudioBeta.exe", "RobloxStudio")),
+                        ("Unreal Editor", unreal, ("UnrealEditor.exe", "UnrealEditor"))):
+                    if not exe:
+                        continue
+                    if _running(*procs):
+                        _log(f"{label} already running")
+                        continue
+                    try:
+                        launch_background(exe)
+                        _log(f"{label} started in the background")
+                    except Exception as e:
+                        _log(f"couldn't start {label}: {e}")
+    except Exception as e:
+        _log(f"setup error: {e}")
+    finally:
+        SETUP.update(running=False, done=True)
+        _SETUP_LOCK.release()
+
+
+def start_setup(install: bool = True, launch: bool = True) -> None:
+    threading.Thread(target=run_setup, args=(install, launch), daemon=True).start()

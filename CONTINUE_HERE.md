@@ -1,3 +1,18 @@
+# >>> REWORK 2 (IDE + connectors + auto-setup) — DONE, see PROGRESS.md PIVOT 20 <<<
+User asked: remove VM + Terminal tabs (agents keep running in the background);
+IDE view looks like Google Antigravity (explorer | editor tabs | agent chat panel on
+the right — the chat REPLACES "Live activity"); opening the IDE closes the sidebar
+with a "going into the light" animation; connectors always on but only used when a
+chat asks for one — asked once -> saved as per-chat temporary instructions; on start
+the app checks Roblox Studio + Unreal Engine, installs if missing, launches them in
+the background.
+- [x] backend: per-chat connectors (/api/chat body.connectors), settings
+      auto_setup/launch_on_start, apps auto-setup thread + /api/apps/setup
+- [x] UI: drop VM/Terminal views, Antigravity IDE layout, sidebar light animation,
+      chat moves into IDE agent panel, per-chat connector chips, setup banner
+- [x] previews, docs, commit, push
+Redo recipe: read this, `git log --oneline -10`, continue first unchecked item.
+
 # >>> REWORK 2026-09-26 — DONE (see PROGRESS.md PIVOT 19) <<<
 User asked: (1) Mac + Windows app, (2) agents manage Unreal Engine, Blender,
 Roblox Studio + public docs for each, (3) theme: midnight app + Catppuccin

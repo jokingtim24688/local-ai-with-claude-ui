@@ -3,27 +3,28 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 const chat = $("#chat");
 const input = $("#input");
 const modelSel = $("#model");
-const activity = $("#activity");
 const chatView = $("#chat-view");
 
 const K = { convos: "aiheaven.convos", projects: "aiheaven.projects", instr: "aiheaven.instructions" };
 const state = {
   convos: [], projects: [], cur: null, projectFilter: null, showArchived: false,
   tools: true, web: false, auto: false, busy: false, instructions: "", models: [],
+  tabs: [], activeTab: null, connectorNames: [],
 };
 
 init();
 async function init() {
   load();
-  wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors(); wireTerminal();
-  wireApps(); wireCodeCopy();
+  wireSidebar(); wireViews(); wireComposer(); wireCustomize(); wireConnectors();
+  wireApps(); wireCodeCopy(); wireIDE();
   setGreeting(); renderThread();       // show the selected chat on startup
   document.addEventListener("click", () => hideMenu());
   wireCollapse();
   wireTitlebar();
-  await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
+  await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents(),
+    loadConnectorNames()]);
   applyDefaultModel(); paintWorkerSelect();
-  loadTree(); loadVM();
+  loadTree(); pollSetup();
 }
 
 /* ---------- persistence ---------- */
@@ -55,6 +56,7 @@ function renderThread() {
   (c?.messages || []).forEach((m) => { if (m.role === "user" || m.role === "assistant") addMsg(m.role, m.content); });
   chatView.classList.toggle("home", !(c?.messages || []).length);
   $("#crumb").textContent = c && c.projectId ? projName(c.projectId) : "";
+  paintChatCtx();
 }
 function projName(id) { return state.projects.find((p) => p.id === id)?.name || ""; }
 
@@ -155,101 +157,15 @@ function moveInd() {
   if (on && ind) { ind.style.width = on.offsetWidth + "px"; ind.style.transform = `translateX(${on.offsetLeft - 4}px)`; }
 }
 function selectView(v) {
+  const was = document.documentElement.dataset.view || "chat";
   $$("#views button").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
   $$(".view").forEach((x) => x.classList.toggle("on", x.dataset.view === v));
   moveInd();
   document.documentElement.dataset.view = v;
-  if (v === "code") loadTree(); if (v === "vm") loadVM();
-  if (v === "terminal") { loadTargets(); loadChanges(); setTimeout(() => $("#term-in").focus(), 60); }
+  if (v === "code" && was !== "code") enterIDE();
+  if (v !== "code" && was === "code") leaveIDE();
 }
 
-/* ---------- terminal mode ---------- */
-function wireTerminal() {
-  $("#term-form").addEventListener("submit", (e) => { e.preventDefault(); termSend(); });
-  $("#term-changes-btn").onclick = () => { $("#term-changes").classList.toggle("hidden"); loadChanges(); };
-  $("#term-push").onclick = termPush;
-  $("#term-manage").onclick = addTarget;
-}
-function termOut() { return $("#term-out"); }
-function termLine(text, cls) {
-  const d = document.createElement("div");
-  d.className = "tl " + (cls || "");
-  d.textContent = text;
-  termOut().appendChild(d); termOut().scrollTop = termOut().scrollHeight;
-  return d;
-}
-async function loadTargets() {
-  try {
-    const d = await (await fetch("/api/targets")).json();
-    const sel = $("#term-target");
-    sel.innerHTML = d.targets.length
-      ? d.targets.map((t) => `<option value="${t.id}">${t.type === "repo" ? "⎇" : "📄"} ${esc(t.name)}</option>`).join("")
-      : `<option value="">no target — click + target</option>`;
-  } catch {}
-}
-async function addTarget() {
-  const type = (prompt("Target type: repo or file", "repo") || "").trim();
-  if (type !== "repo" && type !== "file") return;
-  const name = prompt("Name")?.trim(); if (!name) return;
-  const body = { type, name };
-  if (type === "repo") { body.url = prompt("Git URL (https://…​.git — token in URL if private)")?.trim() || ""; body.branch = prompt("Branch", "main")?.trim() || "main"; }
-  else { body.path = prompt("File path (inside sandbox)")?.trim() || ""; }
-  await fetch("/api/targets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  loadTargets();
-}
-async function loadChanges() {
-  try {
-    const s = await (await fetch("/api/git/status")).json();
-    const d = await (await fetch("/api/git/diff")).json();
-    const head = s.repo ? `on ${esc(s.branch || "?")} — ${s.files.length} changed\n` +
-      s.files.map((f) => `  ${f.status.padEnd(2)} ${esc(f.path)}`).join("\n")
-      : "not a git repo yet (Push will init one)";
-    $("#term-changes").textContent = head + (d.diff ? "\n\n" + d.diff : "");
-  } catch {}
-}
-async function termPush() {
-  const tid = $("#term-target").value;
-  if (!tid) { termLine("no target selected — click + target", "err"); return; }
-  const msg = prompt("Commit message", "update from Ai Heaven") || "update from Ai Heaven";
-  termLine("$ push → " + $("#term-target").selectedOptions[0].textContent, "u");
-  try {
-    const r = await (await fetch("/api/git/push", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target_id: tid, message: msg }) })).json();
-    termLine(r.log || (r.ok ? "pushed" : "failed"), r.ok ? "ok" : "err");
-  } catch (e) { termLine("push error: " + e.message, "err"); }
-  loadChanges();
-}
-async function termSend() {
-  if (state.busy) return;
-  let text = $("#term-in").value.trim(); if (!text) return;
-  let web = state.web; if (text.startsWith("/web")) { web = true; text = text.slice(4).trim(); }
-  const c = curConvo();
-  termLine("$ " + text, "u"); c.messages.push({ role: "user", content: text });
-  $("#term-in").value = ""; save(); setBusy(true);
-  const msgs = [...c.messages]; if (state.instructions) msgs.unshift({ role: "system", content: state.instructions });
-  let acc = "", line = null;
-  try {
-    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: !state.auto }) });
-    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    while (true) {
-      const { done, value } = await reader.read(); if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const blocks = buf.split("\n\n"); buf = blocks.pop();
-      for (const block of blocks) {
-        const ev = /event: (.*)/.exec(block)?.[1]; const dl = /data: (.*)/s.exec(block)?.[1];
-        if (!ev) continue; const data = dl ? JSON.parse(dl) : null;
-        if (ev === "token") { if (!line) { line = termLine("", "a"); acc = ""; } acc += data; line.textContent = acc; termOut().scrollTop = termOut().scrollHeight; }
-        else if (ev === "tool_call") { line = null; termLine("→ " + data.name + "(" + Object.keys(data.args || {}).join(",") + ")", "t"); }
-        else if (ev === "tool_result") { termLine(data.result, data.result.startsWith("error") ? "err" : "r"); }
-        else if (ev === "approval") { await handleApproval(data); }
-        else if (ev === "error") { termLine("error: " + data, "err"); }
-        else if (ev === "done") { if (acc) c.messages.push({ role: "assistant", content: acc }); }
-      }
-    }
-  } catch (e) { termLine("error: " + e.message, "err"); }
-  setBusy(false); save(); loadChanges();
-}
 function wireViews() {
   $$("#views button").forEach((b) => (b.onclick = () => selectView(b.dataset.view)));
   requestAnimationFrame(moveInd);
@@ -346,7 +262,7 @@ async function loadSubagents() {
        ${s.vm && s.vm.stream ? `<span class="ag-vm">🖥 own VM</span>` : ""}</li>`).join("")
       : `<li class="empty-note">no subagents yet</li>`;
     $$("#subagents [data-del]").forEach((b) => (b.onclick = async () => {
-      await fetch("/api/subagents/" + b.dataset.del, { method: "DELETE" }); loadSubagents(); loadVM();
+      await fetch("/api/subagents/" + b.dataset.del, { method: "DELETE" }); loadSubagents();
     }));
   } catch {}
 }
@@ -369,7 +285,7 @@ function wireCustomize() {
       body: JSON.stringify({ name, desc: $("#sa-desc").value.trim(), model: $("#sa-model").value,
         system: $("#sa-system").value.trim(), vm: vm ? { stream: vm } : null }) });
     ["sa-name", "sa-desc", "sa-vm", "sa-system"].forEach((i) => ($("#" + i).value = ""));
-    loadSubagents(); loadVM();
+    loadSubagents();
   };
 }
 function openCustomize(tab) {
@@ -457,7 +373,8 @@ async function loadTree() {
   try {
     const d = await (await fetch("/api/tree")).json();
     $("#tree").innerHTML = renderTree(d.tree, 0);
-    $$("#tree li[data-file]").forEach((li) => (li.onclick = () => openFile(li.dataset.file, li)));
+    $$("#tree li[data-file]").forEach((li) => (li.onclick = () => openFile(li.dataset.file)));
+    $$("#tree li[data-file]").forEach((x) => x.classList.toggle("sel", x.dataset.file === state.activeTab));
   } catch {}
 }
 function renderTree(nodes, depth) {
@@ -467,101 +384,25 @@ function renderTree(nodes, depth) {
     return `<li${pad} data-file="${esc(n.path)}">${esc(n.name)}</li>`;
   }).join("");
 }
-async function openFile(path, li) {
-  $$("#tree li").forEach((x) => x.classList.remove("sel"));
-  if (li) li.classList.add("sel");
-  $("#editor-path").textContent = path;
-  try { const d = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
-    $("#editor-body").innerHTML = `<code>${HL.highlight(d.content || d.error || "", HL.langFromPath(path))}</code>`; } catch {}
+async function openFile(path) {
+  if (!state.tabs.includes(path)) state.tabs.push(path);
+  state.activeTab = path;
+  $$("#tree li[data-file]").forEach((x) => x.classList.toggle("sel", x.dataset.file === path));
+  $("#editor-path").innerHTML = path.split("/").map(esc).join('<span class="sep">›</span>');
+  paintTabs();
+  try {
+    const d = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
+    const text = d.content || d.error || "";
+    const lang = HL.langFromPath(path);
+    $("#editor-body").innerHTML = `<code>${HL.highlight(text, lang)}</code>`;
+    $("#ide-status").innerHTML = `<span>${esc(lang || "text")}</span><span>${text.split("\n").length} lines</span>` +
+      `<span class="spacer"></span><span>lead ${esc(modelSel.value || "?")}</span><span>workers ${esc(state.workerModel || "?")}</span>`;
+  } catch {}
 }
-
-/* ---------- vm view ---------- */
-function wireVM() {
-  $$("[data-vm]").forEach((b) => (b.onclick = async () => {
-    b.disabled = true;
-    try { paintVM(await (await fetch("/api/vm/action", { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: b.dataset.vm }) })).json()); } catch {}
-    b.disabled = false;
-  }));
-}
-async function loadVM() {
-  try { paintVM(await (await fetch("/api/vm")).json()); } catch {}
-  try { const d = await (await fetch("/api/bus")).json();
-    $("#bus").innerHTML = (d.bus || []).slice(-12).reverse().map((m) =>
-      `<li><b>${esc(m.from)}→${esc(m.to)}</b> ${esc(m.text)}</li>`).join("") || `<li class="empty-note">no messages</li>`; } catch {}
-  try { const d = await (await fetch("/api/tasks")).json();
-    const t = $("#tasks"); if (t) t.innerHTML = (d.tasks || []).slice(-14).map((x) =>
-      `<li class="tk tk-${esc(x.status)}"><span class="tk-dot"></span>
-        <span class="tk-desc">${esc(x.desc)}</span>
-        <span class="tk-who">${esc(x.assignee || x.status)}</span></li>`).join("")
-      || `<li class="empty-note">no tasks</li>`; } catch {}
-}
-// a grok-style cloud bot face, tinted to `color`. `pose` drives the expression:
-// look = eyes dart around (busy), sleep = eyes shut + grey (idle), happy/think/alert.
-function grokAvatar(color, pose = "look") {
-  const p = ["look", "sleep", "happy", "think", "alert"].includes(pose) ? pose : "look";
-  return `<span class="gbot pose-${p}" style="--bot:${color}" aria-hidden="true">
-    <svg viewBox="0 0 100 84" class="gbot-svg">
-      <g class="gbot-body">
-        <circle cx="30" cy="36" r="17"/><circle cx="68" cy="35" r="16"/>
-        <circle cx="21" cy="52" r="15"/><circle cx="80" cy="52" r="14"/>
-        <ellipse cx="50" cy="50" rx="35" ry="28"/>
-      </g>
-      <g class="gbot-eyes">
-        <g class="eye eye-l"><ellipse class="ball" cx="39" cy="48" rx="7" ry="9"/>
-          <circle class="pupil" cx="39" cy="48" r="3.4"/></g>
-        <g class="eye eye-r"><ellipse class="ball" cx="61" cy="48" rx="7" ry="9"/>
-          <circle class="pupil" cx="61" cy="48" r="3.4"/></g>
-      </g>
-      <g class="gbot-lids">
-        <path class="lid lid-l" d="M31 48 q8 8 16 0"/>
-        <path class="lid lid-r" d="M53 48 q8 8 16 0"/>
-      </g>
-    </svg></span>`;
-}
-function screenCard(name, stream, primary, runtime = "active", mode = "local", color = "#c99a3a", pose = "look") {
-  const label = primary ? name + " (lead)" : name;
-  const cls = runtime === "disabled" ? " off" : runtime === "paused" ? " paused" : "";
-  const note = runtime === "disabled" ? "disabled by parent — freed for resources"
-    : runtime === "paused" ? "asleep until the lead hands it a job"
-    : primary && mode === "local" ? "Plans, briefs the workers, then runs and debugs what they wrote."
-    : primary ? "waiting for the VM stream…"
-    : "runs on this machine — give it its own VM in Customize → Subagents";
-  const body = (stream && runtime === "active")
-    ? `<img src="${esc(stream)}" alt="">`
-    : `<div class="vm-overlay">${grokAvatar(color, pose)}
-        <span class="vm-live">${esc(name)}</span><p>${note}</p></div>`;
-  return `<div class="vm-screen ${primary ? "primary" : ""}${cls}">
-      <div class="vm-tag">${esc(label)} <span class="vm-st">${esc(runtime)}</span></div>${body}</div>`;
-}
-function meter(label, v) {
-  if (v === null || v === undefined) return `<div class="mtr"><span>${label}</span><b>n/a</b></div>`;
-  const cls = v > 85 ? "hot" : v > 60 ? "warm" : "";
-  return `<div class="mtr ${cls}"><span>${label}</span>
-    <div class="mtr-bar"><i style="width:${Math.min(100, v)}%"></i></div><b>${Math.round(v)}%</b></div>`;
-}
-function paintVM(d) {
-  $("#vm-status").textContent = "status: " + (d.status || "idle");
-  // label the controls for the current mode
-  const vm = d.mode === "vm";
-  if ($("#vm-start")) $("#vm-start").textContent = vm ? "Start VM" : "Run app";
-  if ($("#vm-open")) $("#vm-open").hidden = vm;         // "Open folder" is local-only
-  if ($("#vm-stop")) $("#vm-stop").textContent = "Stop";
-  const sys = d.system || {};
-  const sl = $("#sysload");
-  if (sl) sl.innerHTML = meter("CPU", sys.cpu) + meter("RAM", sys.ram) +
-    (sys.gpu !== null && sys.gpu !== undefined ? meter("GPU", sys.gpu) : "") +
-    `<div class="mtr-note">${(d.agents || []).filter((a) => a.runtime === "active").length + 1} working, ${(d.agents || []).filter((a) => a.runtime === "paused").length} asleep, ${sys.cores || "?"} CPU cores</div>`;
-  const grid = $("#vm-grid");
-  if (grid) {
-    // columns come from CSS auto-fill, so cards never get too small to read
-    let html = screenCard("main", d.stream, true, "active", d.mode, d.color || "#c99a3a", d.pose || "look");
-    (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active", d.mode, a.color, a.pose)));
-    grid.innerHTML = html;
-  }
-  $("#vm-app").innerHTML = d.app_url
-    ? `<iframe src="${esc(d.app_url)}" style="width:100%;height:100%;border:0;border-radius:12px"></iframe>`
-    : `<span>your app appears here when you Run it</span>`;
+function paintTabs() {
+  $("#ide-tabs").innerHTML = state.tabs.map((t) =>
+    `<button class="ide-tab ${t === state.activeTab ? "on" : ""}" data-tab="${esc(t)}">
+       <span>${esc(t.split("/").pop())}</span><i data-close="${esc(t)}" title="close">×</i></button>`).join("");
 }
 
 /* ---------- composer / chat ---------- */
@@ -591,18 +432,17 @@ function addTool(name, args) {
   d.className = "tool" + (name.includes("agent") ? " agentic" : "");
   d.innerHTML = `<div class="call">${esc(label)}(${esc(a)})</div>`;
   chat.appendChild(d); bottom();
-  const li = document.createElement("li");
-  li.innerHTML = `<div class="a-tool">${esc(label)}</div>`;
-  activity.prepend(li);
-  return { chip: d, feed: li };
+  return { chip: d, name, args: args || {} };
 }
 function addToolResult(ref, result) {
   const cls = result.startsWith("error") ? "err" : result.startsWith("OK") || result.startsWith("exit=0") ? "ok" : "";
   const r = document.createElement("div"); r.className = "res " + cls;
   r.textContent = result.length > 1500 ? result.slice(0, 1500) + " …" : result;
   ref.chip.appendChild(r); bottom();
-  const fr = document.createElement("div"); fr.className = "a-res"; fr.textContent = result.slice(0, 200);
-  ref.feed.appendChild(fr); loadTree(); loadVM();
+  loadTree();
+  // like Antigravity: when the agent writes a file while the IDE is open, show it
+  if (/^(write_file|edit_file)$/.test(ref.name) && cls === "ok" && ref.args.path && document.documentElement.dataset.view === "code")
+    openFile(ref.args.path);
 }
 
 async function send() {
@@ -614,6 +454,7 @@ async function send() {
   if (c.messages.length === 0) { c.title = text.slice(0, 42); renderHistory(); }
   chatView.classList.remove("home");
   addMsg("user", text); c.messages.push({ role: "user", content: text });
+  switchOnConnectors(c, text);
   input.value = ""; input.style.height = "auto"; save();
   setBusy(true);
   try { await streamChat(web); } catch (e) { addMsg("assistant", "error: " + e.message); }
@@ -624,10 +465,13 @@ function setBusy(b) { state.busy = b; $("#send").disabled = b; }
 async function streamChat(web) {
   const c = curConvo();
   const msgs = [...c.messages];
+  const chatRules = chatInstructions(c);                      // this chat only
+  if (chatRules) msgs.unshift({ role: "system", content: chatRules });
   if (state.instructions) msgs.unshift({ role: "system", content: state.instructions });
   const res = await fetch("/api/chat", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: !state.auto }),
+    body: JSON.stringify({ model: modelSel.value, messages: msgs, web, tools: state.tools, ask: !state.auto,
+      connectors: c.connectors || [] }),
   });
   const reader = res.body.getReader(); const dec = new TextDecoder();
   let buf = "", bodyEl = null, acc = "", ref = null;
@@ -701,6 +545,11 @@ const DOC_APP = { blender: "blender", unreal: "unreal", roblox: "roblox" };
 let appsData = null;
 async function loadApps() {
   try { appsData = await (await fetch("/api/apps")).json(); } catch { return; }
+  try {
+    const st = await (await fetch("/api/settings")).json();
+    $("#set-auto-setup").checked = !!st.auto_setup; $("#set-launch").checked = !!st.launch_on_start;
+    paintSetupLog(await (await fetch("/api/apps/setup")).json());
+  } catch {}
   const ul = $("#app-cards");
   ul.innerHTML = appsData.apps.map((a) => {
     const [g, cls] = APP_GLYPH[a.key] || ["?", "tool"];
@@ -756,9 +605,112 @@ function wireApps() {
     } catch { $("#docs-status").textContent = "failed — are you online?"; }
     b.disabled = false; loadApps();
   };
+  const saveSetting = (k) => (e) => fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ [k]: e.target.checked }) });
+  $("#set-auto-setup").onchange = saveSetting("auto_setup");
+  $("#set-launch").onchange = saveSetting("launch_on_start");
+  $("#setup-run").onclick = async () => {
+    await fetch("/api/apps/setup", { method: "POST" }); pollSetup(); setTimeout(loadApps, 4000);
+  };
   $("#worker-model").onchange = async (e) => {
     const d = await (await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ worker_model: e.target.value }) })).json();
     state.workerModel = d.worker_model; paintWorkerSelect();
   };
+}
+
+/* ---------- IDE (Antigravity-style) ---------- */
+// The one chat (thread + composer) lives in the Chat view; opening the IDE moves the
+// same DOM into the right-hand Agent panel, so there's never a second chat to sync.
+function moveChat(toIDE) {
+  const wrap = $(".composer-wrap");
+  if (toIDE) { $("#ide-agent-body").append(chat, wrap); }
+  else { $("#chat-view .thread").append(chat); $("#chat-view").append(wrap); }
+  bottom();
+}
+function enterIDE() {
+  const sb = $("#sidebar"), shell = $("#shell");
+  moveChat(true); loadTree();
+  $("#ide-agent-model").textContent = modelSel.value || "";
+  if (shell.classList.contains("collapsed") || getComputedStyle(sb).display === "none") { shell.classList.add("ide-mode"); return; }
+  sb.classList.remove("from-light"); sb.classList.add("to-light");      // the sidebar goes into the light
+  sb.addEventListener("animationend", () => { shell.classList.add("ide-mode"); sb.classList.remove("to-light"); }, { once: true });
+}
+function leaveIDE() {
+  const sb = $("#sidebar"), shell = $("#shell");
+  moveChat(false);
+  shell.classList.remove("ide-mode");
+  sb.classList.remove("to-light"); sb.classList.add("from-light");     // and comes back out of it
+  sb.addEventListener("animationend", () => sb.classList.remove("from-light"), { once: true });
+}
+function wireIDE() {
+  $("#ide-tabs").addEventListener("click", (e) => {
+    const close = e.target.dataset.close;
+    if (close) {
+      state.tabs = state.tabs.filter((t) => t !== close);
+      if (state.activeTab === close) {
+        state.activeTab = state.tabs[state.tabs.length - 1] || null;
+        if (state.activeTab) return openFile(state.activeTab);
+        $("#editor-body").innerHTML = `<code><span class="ln">Open a file from the explorer, or ask the agent to write one.</span></code>`;
+        $("#editor-path").textContent = "no file open"; $("#ide-status").innerHTML = "";
+      }
+      return paintTabs();
+    }
+    const t = e.target.closest(".ide-tab"); if (t) openFile(t.dataset.tab);
+  });
+  $("#ide-new-chat").onclick = () => { newChat(); input.focus(); };
+  $("#reload-tree").onclick = loadTree;
+  modelSel.addEventListener("change", () => { $("#ide-agent-model").textContent = modelSel.value; });
+}
+
+/* ---------- connectors: always ready, on per chat once asked ---------- */
+async function loadConnectorNames() {
+  try { state.connectorNames = ((await (await fetch("/api/connectors")).json()).connectors || []).map((c) => c.name); } catch {}
+}
+function connectorRe(name) {
+  const body = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/[-_ ]+/g, "[\\s_-]?");
+  return new RegExp(`(^|[^a-z0-9])${body}($|[^a-z0-9])`, "i");
+}
+function switchOnConnectors(c, text) {
+  const on = c.connectors || (c.connectors = []);
+  const hits = state.connectorNames.filter((n) => !on.includes(n) && connectorRe(n).test(text));
+  if (!hits.length) return;
+  on.push(...hits); save(); paintChatCtx();
+  const note = document.createElement("div"); note.className = "ctx-note";
+  note.textContent = `${hits.join(", ")} ${hits.length > 1 ? "are" : "is"} on for this chat`;
+  chat.appendChild(note); bottom();
+}
+function chatInstructions(c) {
+  const on = c.connectors || [];
+  if (!on.length) return "";
+  return "Instructions for THIS chat only: the user switched on these connectors: " +
+    on.map((n) => `${n} (tools named mcp__${n}__*)`).join(", ") +
+    ". Use them whenever a request in this chat needs that service.";
+}
+function paintChatCtx() {
+  const c = curConvo(), el = $("#chat-ctx"); if (!el) return;
+  const on = (c && c.connectors) || [];
+  el.hidden = !on.length;
+  el.innerHTML = on.length ? `<span class="ctx-label">This chat</span>` + on.map((n) =>
+    `<span class="ctx-chip">${esc(n)}<button type="button" data-off="${esc(n)}" title="turn off for this chat">×</button></span>`).join("") : "";
+  el.querySelectorAll("[data-off]").forEach((b) => (b.onclick = () => {
+    c.connectors = on.filter((x) => x !== b.dataset.off); save(); paintChatCtx();
+  }));
+}
+
+/* ---------- startup setup (Roblox Studio / Unreal) ---------- */
+async function pollSetup(tries = 0) {
+  let d; try { d = await (await fetch("/api/apps/setup")).json(); } catch { return; }
+  const note = $("#setup-note"), last = d.log[d.log.length - 1] || "";
+  const needsYou = d.log.some((l) => l.includes("ONE-TIME STEP"));
+  note.hidden = !(d.running || needsYou);
+  note.textContent = d.running ? "Setting up apps: " + last.replace(/^\S+ /, "") : "Unreal needs your Epic sign-in (click)";
+  note.onclick = () => openCustomize("apps");
+  paintSetupLog(d);
+  // keep polling while it runs; give a just-started app a few seconds to kick it off
+  if (d.running || (!d.done && tries < 5)) setTimeout(() => pollSetup(tries + 1), 3000);
+}
+function paintSetupLog(d) {
+  const pre = $("#setup-log"); if (!pre) return;
+  pre.hidden = !d.log.length; pre.textContent = d.log.join("\n"); pre.scrollTop = pre.scrollHeight;
 }
