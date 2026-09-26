@@ -1,7 +1,7 @@
-"""Elysium — native desktop launcher.
+"""Ai Heaven — native desktop launcher (Windows + macOS).
 
 This is the whole app's entry point. Packaged with PyInstaller it becomes a
-single double-clickable executable (Elysium.exe / Elysium.app / Elysium) — no
+single double-clickable app (Ai Heaven.exe on Windows, Ai Heaven.app on macOS) — no
 Python install, no running individual files. In dev, just `python desktop.py`.
 
 It starts the Flask backend in a background thread, then opens a native window
@@ -76,9 +76,26 @@ def wait_up(url: str, tries: int = 60):
             time.sleep(0.25)
 
 
+def find_ollama():
+    """The ollama binary on Windows / macOS / Linux, even when PATH is bare
+    (apps launched from Finder or the Start menu don't get your shell PATH)."""
+    import shutil
+    exe = shutil.which("ollama")
+    if exe:
+        return exe
+    home = os.path.expanduser("~")
+    cands = {
+        "win32": [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Ollama", "ollama.exe"),
+                  r"C:\Program Files\Ollama\ollama.exe"],
+        "darwin": ["/Applications/Ollama.app/Contents/Resources/ollama",
+                   os.path.join(home, "Applications/Ollama.app/Contents/Resources/ollama"),
+                   "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"],
+    }.get(sys.platform, ["/usr/local/bin/ollama", "/usr/bin/ollama"])
+    return next((c for c in cands if c and os.path.isfile(c)), None)
+
+
 def ensure_ollama():
     """Best-effort: start `ollama serve` if Ollama is installed but not running."""
-    import shutil
     import subprocess
     import urllib.request
     try:
@@ -86,7 +103,7 @@ def ensure_ollama():
         return  # already up
     except Exception:
         pass
-    exe = shutil.which("ollama")
+    exe = find_ollama()
     if not exe:
         return
     # low-RAM defaults: one resident model, one request at a time, smaller KV cache.
@@ -129,32 +146,37 @@ def main():
         import webview
 
         class Api:
-            window = None
-            _max = False
+            # pywebview exposes every PUBLIC attribute of js_api to JS by walking it
+            # recursively. A public `window` drags in the native window object and
+            # recurses forever (the "Empty.Empty.Empty… maximum recursion depth"
+            # crash on drag). Underscore = private = never walked.
+            def __init__(self):
+                self._window = None
+                self._max = False
 
             def minimize(self):
-                if self.window:
-                    self.window.minimize()
+                if self._window:
+                    self._window.minimize()
 
             def toggle_maximize(self):
-                if not self.window:
+                if not self._window:
                     return
                 self._max = not self._max
-                self.window.maximize() if self._max else self.window.restore()
+                self._window.maximize() if self._max else self._window.restore()
 
             def close(self):
-                if self.window:
-                    self.window.destroy()
+                if self._window:
+                    self._window.destroy()
 
         api = Api()
         window = webview.create_window(
             b.get("name", "Ai Heaven"), url,
             width=w.get("width", 1280), height=w.get("height", 820),
             min_size=(w.get("min_width", 900), w.get("min_height", 600)),
-            background_color="#eaf3ff",
+            background_color="#0b0f1c",
             frameless=True, easy_drag=False, js_api=api,
         )
-        api.window = window
+        api._window = window
 
         # Force the modern WebView2 engine on Windows. If pywebview falls back to
         # the ancient MSHTML/IE engine, the app's CSS/JS breaks and the window

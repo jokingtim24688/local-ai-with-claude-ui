@@ -238,13 +238,18 @@ def scan_skills(skills_dir: str) -> dict[str, dict]:
         text = md.read_text(encoding="utf-8", errors="replace")
         name = md.parent.name
         desc = ""
-        # crude frontmatter/description sniff
-        for line in text.splitlines():
-            low = line.lower().strip()
-            if low.startswith("name:"):
-                name = line.split(":", 1)[1].strip()
-            elif low.startswith("description:"):
-                desc = line.split(":", 1)[1].strip()
+        # read name/description from the --- frontmatter only (a code line like
+        # `name: str` in the body must not rename the skill)
+        lines = text.splitlines()
+        if lines and lines[0].strip() == "---":
+            for line in lines[1:]:
+                if line.strip() == "---":
+                    break
+                low = line.lower().strip()
+                if low.startswith("name:"):
+                    name = line.split(":", 1)[1].strip()
+                elif low.startswith("description:"):
+                    desc = line.split(":", 1)[1].strip()
         if not desc:
             for line in text.splitlines():
                 s = line.strip()

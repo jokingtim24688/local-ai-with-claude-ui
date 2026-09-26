@@ -1,3 +1,25 @@
+# >>> ACTIVE REWORK (2026-09-26) — resume here if the chat dies <<<
+User asked: (1) Mac + Windows app, (2) agents manage Unreal Engine, Blender,
+Roblox Studio + public docs for each, (3) theme: midnight app + Catppuccin
+("cappuccino") code colors, (4) keep subagents but they run LOW-POWER coder models
+that write code / 3D-model scripts; the parent (main) DEBUGS after each one finishes.
+Checklist (tick in git log / PROGRESS.md PIVOT 19):
+- [x] desktop.py: fix drag crash (js_api must not expose window -> Api._window),
+      mac traffic-light controls, ollama discovery on mac/win
+- [x] paths.py: mac data dir ~/Library/Application Support/AiHeaven when frozen
+- [x] apps.py: detect Blender/Unreal/Roblox (win+mac), tools blender_run,
+      unreal_run_python, unreal_uat, roblox_open, rojo, luau_check, app_launch,
+      app_status, fetch_docs (whitelisted official docs + disk cache)
+- [x] skills: blender-python, unreal-engine, roblox-studio (condensed public docs + links)
+- [ ] app.py: worker_model (default qwen2.5-coder:3b), specialists blender/unreal/roblox,
+      post-run auto checks (compile/json/node/luau) + "PARENT: debug now" handoff,
+      /api/apps endpoints, main-only app tools (gated)
+- [ ] UI: midnight theme rewrite of static/style.css, Catppuccin code blocks,
+      static/hl.js highlighter, markdown code fences in chat, Apps tab in Customize
+- [ ] logo: crescent mark -> assets/logo.svg, icon.ico, icon.icns
+- [ ] build_mac.sh (+ nuitka mac flags), docs (CLAUDE.md, PROGRESS.md), previews
+Redo recipe: read this list, `git log --oneline -15`, continue the first unchecked item.
+
 # CONTINUE HERE — Ai Heaven handoff
 
 Pick this up in a fresh chat. Branch: `claude/amazing-keller-dvibe7`.
