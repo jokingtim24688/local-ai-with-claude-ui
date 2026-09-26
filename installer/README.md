@@ -1,4 +1,4 @@
-# Installing Ai Heaven
+# Installing Night Crew
 
 Two ways. Both still need **Ollama** + at least one model pulled.
 
@@ -17,19 +17,19 @@ Re-run the same script any time to launch again.
 This is the "not one loose file" path — a proper Setup that installs the app,
 adds Start-Menu / desktop shortcuts, and registers an uninstaller.
 
-### Windows → `AiHeaven-Setup.exe`
-1. `python build.py` → makes `dist\Ai Heaven.exe`
+### Windows → `NightCrew-Setup.exe`
+1. `python build.py` → makes `dist\Night Crew.exe`
 2. Install **Inno Setup** (https://jrsoftware.org/isdl.php)
-3. Compile `installer/AiHeaven.iss` (open + Compile, or `iscc installer\AiHeaven.iss`)
-4. Share `installer/Output/AiHeaven-Setup.exe`
+3. Compile `installer/NightCrew.iss` (open + Compile, or `iscc installer\NightCrew.iss`)
+4. Share `installer/Output/NightCrew-Setup.exe`
 
 The wizard offers to install Ollama (via winget) if it's missing, and launches
 the app at the end.
 
-### macOS → `Ai Heaven.dmg`
-1. `python build.py` → makes `dist/Ai Heaven.app`
-2. `./installer/build_dmg.sh` → `installer/Ai Heaven.dmg`
-3. Share the .dmg. User drags **Ai Heaven** into Applications.
+### macOS → `Night Crew.dmg`
+1. `python build.py` → makes `dist/Night Crew.app`
+2. `./installer/build_dmg.sh` → `installer/Night Crew.dmg`
+3. Share the .dmg. User drags **Night Crew** into Applications.
    (Unsigned: first launch = right-click → Open.)
 
 ## What still has to be there

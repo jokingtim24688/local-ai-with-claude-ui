@@ -5,7 +5,7 @@ const input = $("#input");
 const modelSel = $("#model");
 const chatView = $("#chat-view");
 
-const K = { convos: "aiheaven.convos", projects: "aiheaven.projects", instr: "aiheaven.instructions" };
+const K = { convos: "nightcrew.convos", projects: "nightcrew.projects", instr: "nightcrew.instructions" };
 const state = {
   convos: [], projects: [], cur: null, projectFilter: null, showArchived: false,
   tools: true, web: false, auto: false, busy: false, instructions: "", models: [],
@@ -29,6 +29,11 @@ async function init() {
 
 /* ---------- persistence ---------- */
 function load() {
+  // renamed from Ai Heaven: carry saved chats/projects/instructions over once
+  for (const k of ["convos", "projects", "instructions"]) {
+    try { const old = localStorage.getItem("aiheaven." + k);
+      if (old !== null && localStorage.getItem("nightcrew." + k) === null) localStorage.setItem("nightcrew." + k, old); } catch {}
+  }
   try { state.convos = JSON.parse(localStorage.getItem(K.convos)) || []; } catch {}
   try { state.projects = JSON.parse(localStorage.getItem(K.projects)) || []; } catch {}
   state.instructions = localStorage.getItem(K.instr) || "";

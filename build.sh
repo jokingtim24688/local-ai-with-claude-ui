@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# macOS / Linux build.   macOS -> dist/Ai Heaven.app      Linux -> dist/Ai Heaven
+# macOS / Linux build.   macOS -> dist/Night Crew.app      Linux -> dist/Night Crew
 # (Windows: build.bat or build_nuitka.bat.)  Real compiled app instead:  python3 build_nuitka.py
 set -e
 cd "$(dirname "$0")"
@@ -9,8 +9,8 @@ pip install --quiet --upgrade pip
 pip install --quiet -r requirements.txt pyinstaller
 python -m PyInstaller --noconfirm elysium.spec
 if [ "$(uname)" = "Darwin" ]; then
-  echo "Built: dist/Ai Heaven.app  (drag it to Applications)"
+  echo "Built: dist/Night Crew.app  (drag it to Applications)"
   echo "First launch of an unsigned app: right-click it -> Open."
 else
-  echo "Built: dist/Ai Heaven"
+  echo "Built: dist/Night Crew"
 fi

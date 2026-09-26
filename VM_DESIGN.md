@@ -25,7 +25,7 @@ manual ISO wrangling — it pulls the official cloud image.
 - **Shared storage (all agents, same data):** mount the SAME host folder into each
   VM — this is the "different PCs, one storage" model:
   ```
-  multipass mount ./AiHeaven-data/workspace buddy:/work
+  multipass mount ./NightCrew-data/workspace buddy:/work
   ```
 - **Run commands in it** (this is what `run_command` becomes for a VM-backed agent):
   ```

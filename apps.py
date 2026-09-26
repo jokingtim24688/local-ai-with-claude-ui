@@ -401,7 +401,7 @@ def fetch_docs(app: str = "", page: str = "", max_chars: int = 12000) -> str:
                 f"or a URL on: {', '.join(DOC_DOMAINS)}")
     cf = _cache_file(url)
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (AiHeaven docs)"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (NightCrew docs)"})
         with urllib.request.urlopen(req, timeout=25) as r:
             text = _page_text(r.read().decode("utf-8", "replace"))
         with open(cf, "w", encoding="utf-8") as f:

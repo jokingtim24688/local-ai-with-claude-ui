@@ -990,7 +990,7 @@ def api_git_push():
     t = next((x for x in load_targets() if x["id"] == b.get("target_id")), None)
     if not t:
         return jsonify({"ok": False, "log": "pick a target first"})
-    msg = b.get("message") or "update from Ai Heaven"
+    msg = b.get("message") or "update from Night Crew"
     if t["type"] == "file":
         return jsonify({"ok": True, "log": f"file target '{t['name']}' → tell the agent to write to {t['path']}"})
     log = []

@@ -1,12 +1,12 @@
-"""build_nuitka.py — compile Ai Heaven into a REAL native .exe with Nuitka.
+"""build_nuitka.py — compile Night Crew into a REAL native .exe with Nuitka.
 
 Nuitka translates the Python to C and compiles it to a true machine-code binary
 (faster start, harder to decompile) — unlike PyInstaller, which bundles the
 interpreter. This is the "actual compiled exe".
 
     pip install nuitka
-    python build_nuitka.py                 -> Windows: build_nuitka/Ai Heaven.exe
-                                              macOS:   build_nuitka/Ai Heaven.app
+    python build_nuitka.py                 -> Windows: build_nuitka/Night Crew.exe
+                                              macOS:   build_nuitka/Night Crew.app
     python build_nuitka.py --desktop       -> builds straight onto your Desktop
 
 Windows: the first run downloads a C compiler (MinGW) automatically.
@@ -19,7 +19,7 @@ import subprocess
 import sys
 
 OUT = os.path.join(os.path.expanduser("~"), "Desktop") if "--desktop" in sys.argv else "build_nuitka"
-APP, VERSION = "Ai Heaven", "0.2.0"
+APP, VERSION = "Night Crew", "0.2.0"
 MAC, WIN = sys.platform == "darwin", sys.platform == "win32"
 
 DATA = [
@@ -40,7 +40,7 @@ if WIN:
     RESULT = f"{APP}.exe"
 elif MAC:
     PLATFORM = [
-        "--standalone", "--macos-create-app-bundle",   # -> Ai Heaven.app
+        "--standalone", "--macos-create-app-bundle",   # -> Night Crew.app
         "--macos-app-icon=assets/icon.icns",
         f"--macos-app-name={APP}", f"--macos-app-version={VERSION}",
         f"--output-filename={APP}",

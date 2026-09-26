@@ -1,7 +1,7 @@
-# PyInstaller spec — builds "Ai Heaven" into one standalone app.
+# PyInstaller spec — builds "Night Crew" into one standalone app.
 # The build auto-detects the OS it runs on:
-#   run it on Windows -> dist/Ai Heaven.exe
-#   run it on macOS   -> dist/Ai Heaven.app
+#   run it on Windows -> dist/Night Crew.exe
+#   run it on macOS   -> dist/Night Crew.app
 # (A single file can't run on both OSes — different binary formats — so build
 #  once per OS. Each build produces the right app automatically.)
 #   pip install pyinstaller
@@ -9,7 +9,7 @@
 import sys
 from PyInstaller.utils.hooks import collect_submodules
 
-APP = "Ai Heaven"
+APP = "Night Crew"
 
 block_cipher = None
 
@@ -73,7 +73,7 @@ else:
         coll,
         name=f"{APP}.app",
         icon="assets/icon.icns" if os.path.exists("assets/icon.icns") else None,
-        bundle_identifier="app.aiheaven.desktop",
+        bundle_identifier="app.nightcrew.desktop",
         version=VERSION,
         info_plist={
             "CFBundleName": APP,

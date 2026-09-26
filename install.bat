@@ -1,8 +1,8 @@
 @echo off
-REM Ai Heaven — install from source and run (Windows)
+REM Night Crew — install from source and run (Windows)
 setlocal
 cd /d "%~dp0"
-echo == Ai Heaven setup ==
+echo == Night Crew setup ==
 
 where python >nul 2>&1
 if errorlevel 1 (
@@ -32,5 +32,5 @@ rem the lead (debugs) + the low-power worker (writes first drafts)
 ollama list | find "hermes3:8b" >nul || (echo Pulling the lead model hermes3:8b... & ollama pull hermes3:8b)
 ollama list | find "qwen2.5-coder:3b" >nul || (echo Pulling the worker model qwen2.5-coder:3b... & ollama pull qwen2.5-coder:3b)
 
-echo Launching Ai Heaven...
+echo Launching Night Crew...
 python desktop.py

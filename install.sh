@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Ai Heaven — install from source and run (macOS / Linux)
+# Night Crew — install from source and run (macOS / Linux)
 set -e
 cd "$(dirname "$0")"
-echo "== Ai Heaven setup =="
+echo "== Night Crew setup =="
 
 command -v python3 >/dev/null || { echo "Install Python 3.10+ first (python.org / brew install python)"; exit 1; }
 
@@ -25,4 +25,4 @@ echo "Starting Ollama..."; (ollama serve >/dev/null 2>&1 &) ; sleep 2
 ollama list | grep -q "hermes3:8b" || { echo "Pulling the lead model hermes3:8b..."; ollama pull hermes3:8b; }
 ollama list | grep -q "qwen2.5-coder:3b" || { echo "Pulling the worker model qwen2.5-coder:3b..."; ollama pull qwen2.5-coder:3b; }
 
-echo "Launching Ai Heaven..."; python3 desktop.py
+echo "Launching Night Crew..."; python3 desktop.py

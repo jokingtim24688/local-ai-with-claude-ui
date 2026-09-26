@@ -1,4 +1,4 @@
-# Ai Heaven — project brief for Claude
+# Night Crew — project brief for Claude
 
 Native desktop app (**Windows + macOS**) that runs a **local game-dev agent team on
 Ollama**: a lead model with memory plus low-power worker models, driving **Blender,
@@ -17,10 +17,10 @@ Needs Ollama + two models: `ollama pull hermes3:8b` (lead) and
 `ollama pull qwen2.5-coder:3b` (worker). `install.sh` / `install.bat` do all of it.
 
 ## Build the app (build on each OS for that OS)
-- Windows: `build_nuitka.bat` / `python build_nuitka.py [--desktop]` → `Ai Heaven.exe`
-  (compiled), or `python build.py` → `dist/Ai Heaven.exe` (PyInstaller)
-- macOS: `python3 build_nuitka.py` → `build_nuitka/Ai Heaven.app` (needs
-  `xcode-select --install`), or `./build.sh` → `dist/Ai Heaven.app` (PyInstaller,
+- Windows: `build_nuitka.bat` / `python build_nuitka.py [--desktop]` → `Night Crew.exe`
+  (compiled), or `python build.py` → `dist/Night Crew.exe` (PyInstaller)
+- macOS: `python3 build_nuitka.py` → `build_nuitka/Night Crew.app` (needs
+  `xcode-select --install`), or `./build.sh` → `dist/Night Crew.app` (PyInstaller,
   onedir + BUNDLE). Unsigned: first launch = right-click → Open.
 Build in a clean venv (flask ollama pywebview psutil + the build tool) so it stays
 small — a global env drags in torch/pandas and bloats it to GBs.
@@ -35,13 +35,13 @@ apps.py        Blender / Unreal / Roblox Studio / Rojo / luau: detection (win+ma
                luau_check, fetch_docs, docs_index), official-docs index + disk cache
 web.py         web_search / web_fetch (only on /web turns)
 connectors.py  MCP client bridge (mcp SDK, fail-closed)
-paths.py       bundled-resource (RES_DIR) vs writable AiHeaven-data (DATA_DIR);
+paths.py       bundled-resource (RES_DIR) vs writable NightCrew-data (DATA_DIR);
                detects PyInstaller AND Nuitka
 branding.json  name / logo / accent / default_model — everything brandable, no code
 assets/        logo.svg (UI mark), icon.svg -> icon.ico (Windows) + icon.icns (macOS)
 static/        index.html, style.css, app.js, hl.js (offline highlighter + chat
                markdown), fonts/ (IBM Plex Sans, Fraunces, JetBrains Mono — OFL)
-skills/        <name>/SKILL.md — new ones are copied into AiHeaven-data on each start
+skills/        <name>/SKILL.md — new ones are copied into NightCrew-data on each start
                (never overwriting the user's). blender-python / unreal-engine /
                roblox-studio = condensed official docs
 elysium.spec + build*.{py,bat,sh}   packaging/installers
@@ -92,8 +92,8 @@ SSE events: `token, tool_call, tool_result, approval, error, done`.
 - pywebview `js_api`: never keep the window (or any native object) in a PUBLIC
   attribute — pywebview walks public attributes recursively (the drag crash). Use `_window`.
 - Runtime json (subagents/tasks/bus/connectors/targets/settings/apps, MEMORY.md, prompt.md) is
-  gitignored; it's user data, written to `AiHeaven-data/` next to the exe (Windows),
-  `~/Library/Application Support/AiHeaven` (macOS app), or the repo root (dev).
+  gitignored; it's user data, written to `NightCrew-data/` next to the exe (Windows),
+  `~/Library/Application Support/NightCrew` (macOS app), or the repo root (dev).
 - No content filter is added; refusals come from model weights.
 - Regenerate `preview_*.png` after a big visual change (rendered from the real CSS).
 - Vanilla JS + Flask, no build step for the UI.

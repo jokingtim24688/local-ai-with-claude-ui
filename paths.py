@@ -21,7 +21,8 @@ FROZEN = getattr(sys, "frozen", False) or ("__compiled__" in globals())
 # so HERE already points at the bundled resources there.
 RES_DIR = getattr(sys, "_MEIPASS", HERE)
 
-APP_NAME = "AiHeaven"
+APP_NAME = "NightCrew"
+OLD_APP_NAME = "NightCrew"   # pre-rename data is migrated on first start
 
 
 def _writable(d: str) -> bool:
@@ -52,7 +53,20 @@ def data_dir() -> str:
     return HERE
 
 
+def _migrate_old_data(new: str) -> None:
+    """Renamed from Ai Heaven: move the old data folder over once, if present."""
+    if not FROZEN or os.path.exists(new):
+        return
+    old = new.replace(APP_NAME, OLD_APP_NAME)
+    if old != new and os.path.isdir(old):
+        try:
+            shutil.move(old, new)
+        except Exception:
+            pass
+
+
 DATA_DIR = data_dir()
+_migrate_old_data(DATA_DIR)
 
 
 def res(*parts: str) -> str:

@@ -5,7 +5,7 @@ and the contracts to keep so we don't break each other. Branch:
 `claude/amazing-keller-dvibe7`.
 
 ## What this is
-**Ai Heaven** — a native desktop app (our own, not Electron) to run and manage a
+**Night Crew** — a native desktop app (our own, not Electron) to run and manage a
 local coding AI on **Ollama**. Claude-desktop-style UI with a heaven theme.
 Packaged to one double-click app with PyInstaller. We can't test it in the build
 env, so it's coded to be correct and shipped as UI + backend.
@@ -20,17 +20,17 @@ app.py       ← Flask backend. Serves the UI + JSON/SSE API. Ollama bridge +
 tools.py     ← tool registry + SANDBOX jail (all file ops confined to workdir).
 web.py       ← web_search / web_fetch, only used on /web turns.
 paths.py     ← resolves bundled resources (sys._MEIPASS) vs writable
-               AiHeaven-data/ (workspace, skills, MEMORY.md) next to the exe.
+               NightCrew-data/ (workspace, skills, MEMORY.md) next to the exe.
 static/      ← the UI: index.html, style.css, app.js (vanilla, no framework).
-skills/      ← <name>/SKILL.md, seeded into AiHeaven-data/skills on first run.
-branding.json← name/logo/accent/window. Currently name = "Ai Heaven".
+skills/      ← <name>/SKILL.md, seeded into NightCrew-data/skills on first run.
+branding.json← name/logo/accent/window. Currently name = "Night Crew".
 elysium.spec ← PyInstaller build (auto-detects Windows→.exe / macOS→.app).
 ```
 
 ## Subagents + shared agent bus (multi-VM collaboration)
 - Subagents are named helpers with their own system prompt / model / skills, and
   optionally their **own VM** (`sub.vm.stream`). Stored in
-  `AiHeaven-data/subagents.json`. The main agent delegates with the
+  `NightCrew-data/subagents.json`. The main agent delegates with the
   `spawn_subagent(name, task)` tool (added to its schema only when subagents
   exist). `run_subagent()` runs a nested tool-loop autonomously (no approval
   modal) but **inside the same sandbox** = shared storage.
@@ -106,8 +106,8 @@ elysium.spec ← PyInstaller build (auto-detects Windows→.exe / macOS→.app).
 ## Build / run
 - Dev: `pip install -r requirements.txt` then `python desktop.py`
   (or `python app.py` for the backend in a browser at :5173).
-- Ship: `python build.py` (or build.bat / build.sh) → `dist/Ai Heaven.exe` on
-  Windows, `dist/Ai Heaven.app` on macOS. One file per OS (can't be one binary
+- Ship: `python build.py` (or build.bat / build.sh) → `dist/Night Crew.exe` on
+  Windows, `dist/Night Crew.app` on macOS. One file per OS (can't be one binary
   for both). Needs Ollama installed + a model pulled.
 
 ## Working agreement

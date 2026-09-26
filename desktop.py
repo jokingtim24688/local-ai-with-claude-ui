@@ -1,7 +1,7 @@
-"""Ai Heaven — native desktop launcher (Windows + macOS).
+"""Night Crew — native desktop launcher (Windows + macOS).
 
 This is the whole app's entry point. Packaged with PyInstaller it becomes a
-single double-clickable app (Ai Heaven.exe on Windows, Ai Heaven.app on macOS) — no
+single double-clickable app (Night Crew.exe on Windows, Night Crew.app on macOS) — no
 Python install, no running individual files. In dev, just `python desktop.py`.
 
 It starts the Flask backend in a background thread, then opens a native window
@@ -136,7 +136,7 @@ def main():
         try:
             import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                "AiHeaven.Desktop.1")
+                "NightCrew.Desktop.1")
         except Exception:
             pass
 
@@ -171,7 +171,7 @@ def main():
 
         api = Api()
         window = webview.create_window(
-            b.get("name", "Ai Heaven"), url,
+            b.get("name", "Night Crew"), url,
             width=w.get("width", 1280), height=w.get("height", 820),
             min_size=(w.get("min_width", 900), w.get("min_height", 600)),
             background_color="#0b0f1c",

@@ -285,3 +285,6 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - NOTE: winget ids (Roblox.RobloxStudio, EpicGames.EpicGamesLauncher), brew casks
   (roblox-studio/robloxstudio, epic-games) and the Roblox installer URL couldn't be
   verified from the cloud sandbox; every step falls back to the next and logs.
+
+## PIVOT 21 — renamed to Night Crew
+- branding, window/exe/.app names, data folder NightCrew(-data) (old AiHeaven data moved once), localStorage keys nightcrew.* (old aiheaven.* copied once).

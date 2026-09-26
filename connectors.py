@@ -1,4 +1,4 @@
-"""MCP connector bridge — makes Ai Heaven an MCP client.
+"""MCP connector bridge — makes Night Crew an MCP client.
 
 Registered MCP servers (stdio command or SSE url) expose tools that get
 namespaced `mcp__<server>__<tool>` and handed to the agent alongside the
