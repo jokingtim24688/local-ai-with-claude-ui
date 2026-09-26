@@ -16,12 +16,13 @@ init();
 async function init() {
   load();
   wireSidebar(); wireViews(); wireComposer(); wireVM(); wireCustomize(); wireConnectors(); wireTerminal();
-  setGreeting();
+  wireApps(); wireCodeCopy();
+  setGreeting(); renderThread();       // show the selected chat on startup
   document.addEventListener("click", () => hideMenu());
   wireCollapse();
   wireTitlebar();
   await Promise.all([loadBranding(), loadConfig(), loadModels(), loadSkills(), loadMemory(), loadSubagents()]);
-  applyDefaultModel();
+  applyDefaultModel(); paintWorkerSelect();
   loadTree(); loadVM();
 }
 
@@ -144,8 +145,8 @@ function wireSidebar() {
 }
 function setGreeting() {
   const h = new Date().getHours();
-  const t = h < 5 ? "Still awake" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
-  $("#greeting").textContent = t + ". What shall we create?";
+  const t = h < 5 ? "Still up? Good." : h < 12 ? "Morning." : h < 18 ? "Afternoon." : "Evening.";
+  $("#greeting").textContent = t + (h >= 18 || h < 5 ? " What are we building tonight?" : " What are we building today?");
 }
 
 /* ---------- view switcher (animated segmented) ---------- */
@@ -280,8 +281,8 @@ async function loadBranding() {
     if (b.name) { $("#brand-name").textContent = b.name; $("#about-name").textContent = b.name; document.title = b.name; }
     if (b.logo) $("#logo").src = "/" + b.logo.replace(/^\//, "");
     const r = document.documentElement.style;
-    if (b.accent) r.setProperty("--clay", b.accent);
-    if (b.accent_soft) r.setProperty("--clay-soft", b.accent_soft);
+    if (b.accent) r.setProperty("--accent", b.accent);
+    if (b.accent_soft) r.setProperty("--accent-soft", b.accent_soft);
     state.defaultModel = b.default_model || "";
   } catch {}
 }
@@ -294,6 +295,8 @@ async function loadConfig() {
   try {
     const c = await (await fetch("/api/config")).json();
     $("#workdir").textContent = c.workdir || "—";
+    document.documentElement.classList.add("plat-" + (c.platform || "win"));
+    state.workerModel = c.worker_model || "";
     const st = $("#status");
     st.classList.toggle("up", !!c.ollama); st.classList.toggle("down", !c.ollama);
     st.lastChild.textContent = c.ollama ? "ollama online" : "ollama offline";
@@ -305,14 +308,16 @@ async function loadModels() {
   try {
     const d = await (await fetch("/api/models")).json();
     const all = d.models || [];
-    // show only the recommended models for this app: hermes + dolphin
-    const pick = all.filter((m) => /hermes|dolphin/i.test(m));
+    // lead + worker candidates: tool-calling chat/coder models (skip embedders etc.)
+    const pick = all.filter((m) => /hermes|dolphin|qwen|llama3|phi4|mistral|gemma3|deepseek|granite|coder/i.test(m)
+      && !/embed/i.test(m));
     state.models = pick.length ? pick : all;
     modelSel.innerHTML = state.models.length
       ? state.models.map((m) => `<option>${esc(m)}</option>`).join("")
-      : `<option>${esc(d.error || "no hermes/dolphin model — ollama pull hermes3:8b")}</option>`;
-    $("#sa-model").innerHTML = `<option value="">(inherit model)</option>` +
+      : `<option>${esc(d.error || "no model yet — ollama pull hermes3:8b")}</option>`;
+    $("#sa-model").innerHTML = `<option value="">worker model</option>` +
       state.models.map((m) => `<option>${esc(m)}</option>`).join("");
+    paintWorkerSelect();
   } catch { modelSel.innerHTML = "<option>offline</option>"; }
 }
 async function loadSkills() {
@@ -335,7 +340,7 @@ async function loadSubagents() {
     const ul = $("#subagents");
     ul.innerHTML = d.subagents.length ? d.subagents.map((s) =>
       `<li><div class="ag-top"><b>${esc(s.name)}</b>
-         <span class="ag-model">${esc(s.model || "inherit")}</span>
+         <span class="ag-model">${esc(s.model || "worker model")}</span>
          <button class="row-menu" data-del="${s.id}">✕</button></div>
        <span class="ag-desc">${esc(s.desc || "")}</span>
        ${s.vm && s.vm.stream ? `<span class="ag-vm">🖥 own VM</span>` : ""}</li>`).join("")
@@ -374,6 +379,7 @@ function openCustomize(tab) {
   if (tab === "memory") loadMemory();
   if (tab === "agents") loadSubagents();
   if (tab === "connectors") loadConnectors();
+  if (tab === "apps") loadApps();
 }
 
 /* ---------- connectors (MCP) ---------- */
@@ -466,7 +472,7 @@ async function openFile(path, li) {
   if (li) li.classList.add("sel");
   $("#editor-path").textContent = path;
   try { const d = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
-    $("#editor-body").innerHTML = `<code>${esc(d.content || d.error || "")}</code>`; } catch {}
+    $("#editor-body").innerHTML = `<code>${HL.highlight(d.content || d.error || "", HL.langFromPath(path))}</code>`; } catch {}
 }
 
 /* ---------- vm view ---------- */
@@ -514,11 +520,11 @@ function grokAvatar(color, pose = "look") {
     </svg></span>`;
 }
 function screenCard(name, stream, primary, runtime = "active", mode = "local", color = "#c99a3a", pose = "look") {
-  const label = primary ? name + " · memory" : name;
+  const label = primary ? name + " (lead)" : name;
   const cls = runtime === "disabled" ? " off" : runtime === "paused" ? " paused" : "";
   const note = runtime === "disabled" ? "disabled by parent — freed for resources"
-    : runtime === "paused" ? "paused (no task) — VM suspended so the PC can breathe"
-    : primary && mode === "local" ? "Local mode — your agents work right here. Hit Run app to preview what they build."
+    : runtime === "paused" ? "asleep until the lead hands it a job"
+    : primary && mode === "local" ? "Plans, briefs the workers, then runs and debugs what they wrote."
     : primary ? "waiting for the VM stream…"
     : "runs on this machine — give it its own VM in Customize → Subagents";
   const body = (stream && runtime === "active")
@@ -545,12 +551,10 @@ function paintVM(d) {
   const sl = $("#sysload");
   if (sl) sl.innerHTML = meter("CPU", sys.cpu) + meter("RAM", sys.ram) +
     (sys.gpu !== null && sys.gpu !== undefined ? meter("GPU", sys.gpu) : "") +
-    `<div class="mtr-note">${(d.agents || []).filter((a) => a.runtime === "active").length + 1} running · ${(d.agents || []).filter((a) => a.runtime === "paused").length} paused · ${sys.cores || "?"} cores</div>`;
+    `<div class="mtr-note">${(d.agents || []).filter((a) => a.runtime === "active").length + 1} working, ${(d.agents || []).filter((a) => a.runtime === "paused").length} asleep, ${sys.cores || "?"} CPU cores</div>`;
   const grid = $("#vm-grid");
   if (grid) {
-    const total = 1 + (d.agents || []).length;
-    const cols = Math.ceil(Math.sqrt(total));           // shrink as agents grow
-    grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    // columns come from CSS auto-fill, so cards never get too small to read
     let html = screenCard("main", d.stream, true, "active", d.mode, d.color || "#c99a3a", d.pose || "look");
     (d.agents || []).forEach((a) => (html += screenCard(a.name, a.stream, false, a.runtime || "active", d.mode, a.color, a.pose)));
     grid.innerHTML = html;
@@ -574,8 +578,8 @@ function bottom() { chat.scrollTop = chat.scrollHeight; }
 function addMsg(role, text) {
   const d = document.createElement("div");
   d.className = `msg ${role}`;
-  d.innerHTML = `<div class="who">${role === "user" ? "you" : "ai heaven"}</div><div class="body"></div>`;
-  d.querySelector(".body").textContent = text;
+  d.innerHTML = `<div class="who">${role === "user" ? "You" : "Lead"}</div><div class="body"></div>`;
+  d.querySelector(".body").innerHTML = HL.render(text);
   chat.appendChild(d); bottom();
   return d.querySelector(".body");
 }
@@ -636,7 +640,7 @@ async function streamChat(web) {
       if (!ev) continue; const data = dl ? JSON.parse(dl) : null;
       if (ev === "token") {
         if (!bodyEl) { bodyEl = addMsg("assistant", ""); bodyEl.classList.add("caret"); acc = ""; }
-        acc += data; bodyEl.textContent = acc; bottom();
+        acc += data; paintStream(bodyEl, acc);
       } else if (ev === "tool_call") { bodyEl?.classList.remove("caret"); bodyEl = null; ref = addTool(data.name, data.args); }
       else if (ev === "tool_result") { if (ref) addToolResult(ref, data.result); ref = null; }
       else if (ev === "approval") { await handleApproval(data); }
@@ -660,4 +664,101 @@ function handleApproval(data) {
     };
     $("#m-allow").onclick = () => done(true); $("#m-deny").onclick = () => done(false);
   });
+}
+
+/* ---------- chat rendering helpers ---------- */
+// re-render streamed markdown at most once per frame (code fences highlight live)
+function paintStream(el, text) {
+  el._pending = text;
+  if (el._raf) return;
+  el._raf = requestAnimationFrame(() => { el._raf = 0; el.innerHTML = HL.render(el._pending); bottom(); });
+}
+function wireCodeCopy() {
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest(".cb-copy"); if (!b) return;
+    const code = b.closest(".codeblock").querySelector("code");
+    const text = [...code.querySelectorAll(".ln")].map((l) => l.textContent).join("\n");
+    try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; b.classList.add("done"); }
+    catch { b.textContent = "Select + copy"; }
+    setTimeout(() => { b.textContent = "Copy"; b.classList.remove("done"); }, 1400);
+  });
+}
+
+/* ---------- worker model ---------- */
+function paintWorkerSelect() {
+  const sel = $("#worker-model"); if (!sel) return;
+  const want = state.workerModel || "qwen2.5-coder:3b";
+  const opts = state.models.includes(want) ? state.models : [want, ...state.models];
+  sel.innerHTML = opts.map((m) => `<option ${m === want ? "selected" : ""}>${esc(m)}</option>`).join("");
+  $("#worker-hint").textContent = state.models.includes(want)
+    ? "writes the first drafts" : `not pulled yet: ollama pull ${want}`;
+}
+
+/* ---------- apps (Blender / Unreal / Roblox) ---------- */
+const APP_GLYPH = { blender: ["Bl", "blender"], unreal: ["UE", "unreal"], roblox: ["Rb", "roblox"],
+  rojo: ["Rj", "tool"], luau: ["Lu", "tool"] };
+const DOC_APP = { blender: "blender", unreal: "unreal", roblox: "roblox" };
+let appsData = null;
+async function loadApps() {
+  try { appsData = await (await fetch("/api/apps")).json(); } catch { return; }
+  const ul = $("#app-cards");
+  ul.innerHTML = appsData.apps.map((a) => {
+    const [g, cls] = APP_GLYPH[a.key] || ["?", "tool"];
+    const docs = DOC_APP[a.key] ? (appsData.docs[a.key] || []).map((d) =>
+      `<button class="doc-link ${d.cached ? "cached" : ""}" data-url="${esc(d.url)}">${esc(d.key)}</button>`).join("") : "";
+    const launch = DOC_APP[a.key] && a.found ? `<button class="pill ghost small" data-launch="${a.key}">Open</button>` : "";
+    return `<li class="app-card" data-key="${a.key}">
+      <div class="app-top"><span class="app-glyph ${cls}">${g}</span>
+        <span class="app-name">${esc(a.label)}</span>
+        <span class="app-state ${a.found ? "found" : "missing"}">${a.found ? (a.custom ? "set by you" : "found") : "not installed"}</span>
+        <span class="spacer"></span>${launch}
+        <button class="pill ghost small" data-editpath="${a.key}">${a.found ? "Change path" : "Set path"}</button></div>
+      ${a.path ? `<div class="app-path">${esc(a.path)}</div>` : ""}
+      <div class="app-edit row"><input class="field" placeholder="full path to the program" value="${esc(a.custom ? a.path : "")}">
+        <button class="pill small" data-savepath="${a.key}">Save</button></div>
+      ${docs ? `<div class="docs-list">${docs}</div>` : ""}</li>`;
+  }).join("");
+  $("#proj-list").innerHTML = appsData.projects.length ? appsData.projects.map((p) =>
+    `<li><span>${esc(p)}</span><button class="row-menu" data-rmproj="${esc(p)}" title="remove">✕</button></li>`).join("")
+    : `<li class="empty-note">None yet. New work goes in the sandbox; add a folder here to let agents open an existing project.</li>`;
+}
+async function postApps(body) {
+  const r = await fetch("/api/apps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || "couldn't save"); return false; }
+  loadApps(); return true;
+}
+function wireApps() {
+  $("#app-cards").addEventListener("click", async (e) => {
+    const t = e.target;
+    if (t.dataset.editpath) t.closest(".app-card").classList.toggle("editing");
+    if (t.dataset.savepath) postApps({ key: t.dataset.savepath, path: t.closest(".app-edit").querySelector("input").value });
+    if (t.dataset.url) fetch("/api/open-url", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: t.dataset.url }) });
+    if (t.dataset.launch) {
+      t.disabled = true;
+      const r = await (await fetch("/api/apps/launch", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ app: t.dataset.launch }) })).json();
+      t.textContent = r.ok ? "Opening…" : "Failed"; if (!r.ok) alert(r.error);
+      setTimeout(() => { t.textContent = "Open"; t.disabled = false; }, 2500);
+    }
+  });
+  $("#proj-list").addEventListener("click", (e) => { const p = e.target.dataset.rmproj; if (p) postApps({ remove_project: p }); });
+  $("#proj-add").onclick = async () => {
+    const v = $("#proj-add-path").value.trim(); if (!v) return;
+    if (await postApps({ add_project: v })) $("#proj-add-path").value = "";
+  };
+  $("#docs-prefetch").onclick = async () => {
+    const b = $("#docs-prefetch"); b.disabled = true; $("#docs-status").textContent = "downloading official docs…";
+    try {
+      const r = await (await fetch("/api/apps/docs/prefetch", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).json();
+      $("#docs-status").textContent = `${r.ok} pages saved` + (r.failed.length ? `, ${r.failed.length} unreachable (offline?)` : "");
+    } catch { $("#docs-status").textContent = "failed — are you online?"; }
+    b.disabled = false; loadApps();
+  };
+  $("#worker-model").onchange = async (e) => {
+    const d = await (await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ worker_model: e.target.value }) })).json();
+    state.workerModel = d.worker_model; paintWorkerSelect();
+  };
 }

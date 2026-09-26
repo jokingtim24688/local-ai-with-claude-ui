@@ -3,14 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>Ai Heaven</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute">
-  <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
-    <feColorMatrix type="saturate" values="0"/></filter>
-</svg>
 <div class="glow"></div>
 <div class="grain"></div>
 
@@ -91,14 +88,15 @@
         <div class="thread">
           <div class="hero" id="hero">
             <div class="mark"></div>
-            <h1 id="greeting">What shall we create?</h1>
+            <h1 id="greeting">What are we building tonight?</h1>
+            <p class="hero-sub">Blender models, Unreal levels, Roblox games. Small workers write the first draft; the lead runs it and fixes what breaks.</p>
           </div>
           <div id="chat" class="chat"></div>
         </div>
 
         <div class="composer-wrap">
           <form id="composer" class="composer glass">
-            <textarea id="input" rows="1" placeholder="Ask Ai Heaven to build something…"></textarea>
+            <textarea id="input" rows="1" placeholder="Describe a model, a level, or a game mechanic…"></textarea>
             <div class="composer-bar">
               <div class="model-pill">
                 <span class="glyph"></span>
@@ -112,7 +110,7 @@
               <button id="send" class="send-btn" type="submit" title="send">↑</button>
             </div>
           </form>
-          <p class="disclaimer">Runs locally on your Ollama models. It reads &amp; writes only inside its sandbox.</p>
+          <p class="disclaimer">Runs on your own Ollama models, offline. Agents only touch the sandbox and project folders you add.</p>
         </div>
       </section>
 
@@ -125,7 +123,7 @@
           </div>
           <div class="editor">
             <div class="pane-head"><span id="editor-path">select a file</span></div>
-            <pre id="editor-body" class="editor-body"><code>&nbsp;</code></pre>
+            <pre id="editor-body" class="editor-body"><code><span class="ln">pick a file on the left</span></code></pre>
           </div>
           <div class="activity glass">
             <div class="pane-head">Live activity</div>
@@ -160,7 +158,7 @@
       <section class="view" data-view="vm">
         <div class="vm-wrap">
           <div class="vm-main">
-            <div class="pane-head">Machines <span class="muted-inline">main + subagents · shared storage</span></div>
+            <div class="pane-head">Agents <span class="muted-inline">the lead plus its workers, sharing one sandbox</span></div>
             <div class="vm-grid" id="vm-grid"></div>
           </div>
           <div class="vm-side glass">
@@ -196,6 +194,7 @@
       <div class="settings-title">Customize</div>
       <button class="tab on" data-tab="skills">Skills</button>
       <button class="tab" data-tab="agents">Subagents</button>
+      <button class="tab" data-tab="apps">Apps</button>
       <button class="tab" data-tab="connectors">Connectors</button>
       <button class="tab" data-tab="instructions">Instructions</button>
       <button class="tab" data-tab="memory">Memory</button>
@@ -211,16 +210,34 @@
 
       <section class="tabpane" data-tab="agents">
         <h3>Subagents</h3>
-        <p class="muted">Named helpers the main agent can delegate a task to with <code>spawn_subagent</code>. Each has its own prompt, model, and (optionally) its own VM — and every one gets the <b>full skill library</b> plus shared storage and the agent bus.</p>
+        <p class="muted">Workers the lead hands one job at a time. Each boots fresh on the worker model, writes its files, and hands back; the lead then runs the result and debugs it.</p>
+        <div class="worker-row"><label for="worker-model">Worker model</label>
+          <select id="worker-model"></select>
+          <span class="muted-inline" id="worker-hint"></span></div>
         <ul id="subagents" class="agent-cards"></ul>
         <div class="agent-form">
           <input id="sa-name" placeholder="name (e.g. researcher)">
           <input id="sa-desc" placeholder="short description">
-          <select id="sa-model"><option value="">(inherit model)</option></select>
+          <select id="sa-model"><option value="">worker model</option></select>
           <input id="sa-vm" placeholder="VM stream URL (its own machine, optional)">
           <textarea id="sa-system" rows="3" placeholder="system prompt — what this subagent is for"></textarea>
           <button id="sa-add" class="pill">Add subagent</button>
         </div>
+      </section>
+
+      <section class="tabpane" data-tab="apps">
+        <h3>Apps</h3>
+        <p class="muted">The tools your agents drive. Workers write Blender, Unreal and Roblox code into the sandbox; the lead runs it here and debugs. Install paths are found automatically. Set one only if yours is somewhere unusual.</p>
+        <ul id="app-cards" class="app-cards"></ul>
+        <h4>Project folders</h4>
+        <p class="muted">Existing projects outside the sandbox: an Unreal project folder, a Rojo project, your <code>.blend</code> files. Agents can only open or change projects listed here.</p>
+        <ul id="proj-list" class="proj-list"></ul>
+        <div class="row"><input id="proj-add-path" class="field" placeholder="folder path, e.g. C:\Users\you\Documents\Unreal Projects\MyGame">
+          <button id="proj-add" class="pill small">Add folder</button></div>
+        <h4>Offline docs</h4>
+        <p class="muted">Official docs pages the agents can read (green dot = saved for offline). Download them once while you're online.</p>
+        <div class="row"><button id="docs-prefetch" class="pill ghost small">Download docs for offline</button>
+          <span id="docs-status" class="muted-inline"></span></div>
       </section>
 
       <section class="tabpane" data-tab="connectors">
@@ -253,7 +270,7 @@
 
       <section class="tabpane" data-tab="about">
         <h3 id="about-name">Ai Heaven</h3>
-        <p class="muted">A little heaven on your machine — a local coding agent on Ollama.</p>
+        <p class="muted">A local game-dev studio that works after dark: a lead model with memory, small worker models, and Blender, Unreal Engine and Roblox Studio at their fingertips. Runs entirely on your Ollama models.</p>
         <p class="muted">Sandbox: <code id="workdir">—</code></p>
       </section>
     </div>
@@ -273,6 +290,7 @@
   </div>
 </div>
 
+<script src="hl.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

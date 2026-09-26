@@ -14,9 +14,9 @@ Checklist (tick in git log / PROGRESS.md PIVOT 19):
 - [x] app.py: worker_model (default qwen2.5-coder:3b), specialists blender/unreal/roblox,
       post-run auto checks (compile/json/node/luau) + "PARENT: debug now" handoff,
       /api/apps endpoints, main-only app tools (gated)
-- [ ] UI: midnight theme rewrite of static/style.css, Catppuccin code blocks,
+- [x] UI: midnight theme rewrite of static/style.css, Catppuccin code blocks,
       static/hl.js highlighter, markdown code fences in chat, Apps tab in Customize
-- [ ] logo: crescent mark -> assets/logo.svg, icon.ico, icon.icns
+- [x] logo: crescent mark -> assets/logo.svg, icon.ico, icon.icns
 - [ ] build_mac.sh (+ nuitka mac flags), docs (CLAUDE.md, PROGRESS.md), previews
 Redo recipe: read this list, `git log --oneline -15`, continue the first unchecked item.
 
