@@ -530,3 +530,9 @@ select option{background:var(--sky-2);color:var(--text)}
 .ide-agent-body .chip{padding:4px 9px;font-size:12px}
 .ide-agent-body .viewseg button{padding:3px 9px}
 .ide-agent-body .model-pill select{max-width:130px}
+
+/* launcher update note */
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;padding:10px 16px;border-radius:12px;
+  background:rgba(22,32,54,.95);border:1px solid var(--accent-b);color:var(--accent-soft);font:500 13px var(--sans);
+  box-shadow:var(--e2);animation:pop .35s var(--spring);transition:opacity .35s,transform .35s}
+.toast.out{opacity:0;transform:translateX(-50%) translateY(8px)}

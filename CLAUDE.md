@@ -13,6 +13,11 @@ pip install -r requirements.txt          # flask, ollama, pywebview, psutil, (mc
 python desktop.py                         # native window; auto-starts `ollama serve`
 python app.py                             # backend only, browser at :5173
 ```
+**Auto-updating shortcut:** `python make_shortcut.py` once -> Desktop + Start-menu
+"Night Crew" (Windows) / `~/Applications/Night Crew.app` (macOS). It runs
+`launcher.py`: git fetch + fast-forward (local edits stashed, re-applied only if clean,
+never conflict markers), pip install when requirements.txt changed, then desktop.py;
+the app shows an "Updated: N changes" toast (`NIGHTCREW_UPDATE_NOTE`). Log: update.log.
 Needs Ollama + two models: `ollama pull hermes3:8b` (lead) and
 `ollama pull qwen2.5-coder:3b` (worker). `install.sh` / `install.bat` do all of it.
 
@@ -27,6 +32,8 @@ small — a global env drags in torch/pandas and bloats it to GBs.
 
 ## File map
 ```
+launcher.py    auto-update (git ff + safe stash) then start desktop.py
+make_shortcut.py  one-time: Desktop/Start-menu shortcut (Win) or Night Crew.app (mac)
 desktop.py     app entry: ensure_ollama(), free port, Flask thread, pywebview window
 app.py         Flask backend: chat SSE + agent tool-loop, all /api/* routes
 tools.py       tool registry + SANDBOX jail (file ops confined to the workdir)

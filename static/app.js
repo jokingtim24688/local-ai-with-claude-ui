@@ -217,6 +217,7 @@ async function loadConfig() {
     const c = await (await fetch("/api/config")).json();
     $("#workdir").textContent = c.workdir || "—";
     document.documentElement.classList.add("plat-" + (c.platform || "win"));
+    if (c.update_note) toast(c.update_note);
     state.workerModel = c.worker_model || "";
     const st = $("#status");
     st.classList.toggle("up", !!c.ollama); st.classList.toggle("down", !c.ollama);
@@ -807,4 +808,10 @@ function wireIDE() {
   $("#ide-new-chat").onclick = () => { newChat(); input.focus(); };
   $("#reload-tree").onclick = () => loadTree(true);
   modelSel.addEventListener("change", () => { $("#ide-agent-model").textContent = modelSel.value; });
+}
+
+function toast(text, ms = 7000) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = text;
+  document.body.appendChild(t);
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, ms);
 }

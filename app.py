@@ -267,6 +267,7 @@ def api_config():
         "ollama": ollama is not None,
         "platform": {"win32": "win", "darwin": "mac"}.get(sys.platform, "linux"),
         "worker_model": load_settings()["worker_model"],
+        "update_note": os.environ.get("NIGHTCREW_UPDATE_NOTE", ""),   # set by launcher.py
     })
 
 

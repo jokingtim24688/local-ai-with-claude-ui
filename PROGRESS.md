@@ -294,3 +294,6 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - View switcher moved into the composer; top bar removed.
 - IDE explorer: Workspace | PC buttons, lazy expand/collapse tree, drives on PC, Use-as-workspace; memory moved to data dir.
 - Fixed: tree .caret clashed with chat cursor class; dead #side-open wiring crashed init.
+
+## PIVOT 23 — auto-updating shortcut
+- launcher.py (update then launch, tiny splash, safe stash), make_shortcut.py (Win .lnk w/ icon on Desktop+Start, mac ~/Applications app), update toast in app.
