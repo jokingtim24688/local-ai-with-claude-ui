@@ -288,3 +288,9 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 
 ## PIVOT 21 — renamed to Night Crew
 - branding, window/exe/.app names, data folder NightCrew(-data) (old AiHeaven data moved once), localStorage keys nightcrew.* (old aiheaven.* copied once).
+
+## PIVOT 22 — layout fixes + explorer
+- Fixed off-center chat: reduced-motion rule left .reveal sidebar at opacity 0. Light animation now WAAPI.
+- View switcher moved into the composer; top bar removed.
+- IDE explorer: Workspace | PC buttons, lazy expand/collapse tree, drives on PC, Use-as-workspace; memory moved to data dir.
+- Fixed: tree .caret clashed with chat cursor class; dead #side-open wiring crashed init.

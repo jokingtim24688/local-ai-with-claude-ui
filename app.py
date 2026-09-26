@@ -87,7 +87,8 @@ def load_settings() -> dict:
     b = load_branding()
     d = {"worker_model": b.get("worker_model", "qwen2.5-coder:3b"),
          "auto_setup": True,        # install Roblox Studio / Unreal (launcher) if missing
-         "launch_on_start": True}   # start them in the background when the app opens
+         "launch_on_start": True,   # start them in the background when the app opens
+         "workdir": ""}             # folder the agents work in ("" = the built-in workspace)
     try:
         with open(_settings_path(), encoding="utf-8") as f:
             d.update({k: v for k, v in json.load(f).items() if k in d})
@@ -342,6 +343,26 @@ def api_apps_setup_run():
     return jsonify({"ok": True})
 
 
+def init_workspace() -> None:
+    """After the default sandbox is set: fix the memory location (data dir, with a
+    one-time copy of an old in-workspace MEMORY.md) and switch to the user's chosen
+    workspace folder if they picked one."""
+    import shutil
+    mem = paths.data("MEMORY.md")
+    old = os.path.join(str(tools.SANDBOX), tools.MEMORY_FILE)
+    if not os.path.exists(mem) and os.path.isfile(old):
+        try:
+            shutil.copyfile(old, mem)
+        except Exception:
+            pass
+    from pathlib import Path
+    tools.MEMORY_PATH = Path(mem)
+    wd = load_settings().get("workdir")
+    if wd and os.path.isdir(wd):
+        CFG["workdir"] = wd
+        tools.set_sandbox(wd)
+
+
 def startup_apps() -> None:
     """Called once when the app starts (desktop.py / app.py main)."""
     st = load_settings()
@@ -389,7 +410,7 @@ def api_skills():
 @app.get("/api/memory")
 def api_memory():
     try:
-        return jsonify({"memory": tools.read_file(tools.MEMORY_FILE)})
+        return jsonify({"memory": tools.memory_text()})
     except tools.ToolError:
         return jsonify({"memory": ""})
 
@@ -1204,6 +1225,105 @@ def api_tree():
     return jsonify({"tree": walk(root)})
 
 
+# ---- IDE explorer: Workspace (the agents' folder) and PC (drives, any folder) ----
+# Read-only browsing for the user. Changing the workspace needs the X-NC header, so
+# a random web page can't flip it with a simple cross-site POST.
+
+def _drives() -> list:
+    if sys.platform == "win32":
+        import string
+        return [{"name": f"{d}:", "path": f"{d}:\\", "dir": True}
+                for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
+    home = os.path.expanduser("~")
+    roots = [{"name": "Home", "path": home, "dir": True}, {"name": "/", "path": "/", "dir": True}]
+    if sys.platform == "darwin" and os.path.isdir("/Volumes"):
+        roots += [{"name": v, "path": os.path.join("/Volumes", v), "dir": True}
+                  for v in sorted(os.listdir("/Volumes"))]
+    return roots
+
+
+_SKIP = {"$recycle.bin", "system volume information", "__pycache__", "node_modules", ".git"}
+
+
+def _list_dir(real: str, rel_base: str | None) -> list:
+    out = []
+    try:
+        with os.scandir(real) as it:
+            for e in it:
+                if e.name.startswith(".") or e.name.lower() in _SKIP:
+                    continue
+                try:
+                    is_dir = e.is_dir()
+                except OSError:
+                    continue
+                p = os.path.join(rel_base, e.name) if rel_base is not None else e.path
+                out.append({"name": e.name, "path": p.replace("\\", "/") if rel_base is not None else p,
+                            "dir": is_dir})
+    except (PermissionError, FileNotFoundError, NotADirectoryError, OSError):
+        return []
+    out.sort(key=lambda x: (not x["dir"], x["name"].lower()))
+    return out[:2000]
+
+
+@app.get("/api/fs/list")
+def api_fs_list():
+    scope = request.args.get("scope", "workspace")
+    path = request.args.get("path", "")
+    if scope == "pc":
+        if not path:
+            return jsonify({"items": _drives()})
+        return jsonify({"items": _list_dir(os.path.abspath(path), None)})
+    try:
+        real = str(tools._jail(path or "."))
+    except tools.ToolError as e:
+        return jsonify({"items": [], "error": str(e)}), 400
+    return jsonify({"items": _list_dir(real, path if path else "")})
+
+
+@app.get("/api/fs/read")
+def api_fs_read():
+    """Open a file from anywhere on the PC in the (read-only) editor."""
+    path = request.args.get("path", "")
+    try:
+        if os.path.getsize(path) > 2_000_000:
+            return jsonify({"path": path, "content": "", "error": "file is over 2 MB — not shown"})
+        with open(path, "rb") as f:
+            raw = f.read()
+        if b"\0" in raw[:4096]:
+            return jsonify({"path": path, "content": "", "error": "binary file — not shown"})
+        return jsonify({"path": path, "content": raw.decode("utf-8", "replace")})
+    except Exception as e:
+        return jsonify({"path": path, "content": "", "error": str(e)}), 404
+
+
+@app.get("/api/workspace")
+def api_workspace():
+    p = str(tools.SANDBOX)
+    return jsonify({"path": p, "name": os.path.basename(p.rstrip("\\/")) or p,
+                    "custom": bool(load_settings().get("workdir"))})
+
+
+@app.post("/api/workspace")
+def api_workspace_set():
+    if request.headers.get("X-NC") != "1":
+        return jsonify({"ok": False, "error": "missing header"}), 403
+    p = ((request.get_json(force=True) or {}).get("path") or "").strip()
+    if p == "":                                     # back to the built-in workspace
+        save_settings({"workdir": ""})
+        CFG["workdir"] = paths.data("workspace")
+        tools.set_sandbox(CFG["workdir"])
+        return api_workspace()
+    p = os.path.abspath(os.path.expanduser(p))
+    if not os.path.isdir(p):
+        return jsonify({"ok": False, "error": f"not a folder: {p}"}), 400
+    if os.path.dirname(p) == p:
+        return jsonify({"ok": False, "error": "pick a folder, not a whole drive"}), 400
+    save_settings({"workdir": p})
+    CFG["workdir"] = p
+    tools.set_sandbox(p)
+    return api_workspace()
+
+
 @app.get("/api/file")
 def api_file():
     path = request.args.get("path", "")
@@ -1488,6 +1608,7 @@ def main():
     CFG["skills"] = os.path.abspath(a.skills)
     tools.set_sandbox(CFG["workdir"])
     tools.scan_skills(CFG["skills"])
+    init_workspace()
     seed_default_subagents()
     startup_apps()
 

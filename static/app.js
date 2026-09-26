@@ -10,6 +10,7 @@ const state = {
   convos: [], projects: [], cur: null, projectFilter: null, showArchived: false,
   tools: true, web: false, auto: false, busy: false, instructions: "", models: [],
   tabs: [], activeTab: null, connectorNames: [],
+  fsScope: "workspace", fs: { workspace: { open: new Set(), kids: new Map() }, pc: { open: new Set(), kids: new Map() } },
 };
 
 init();
@@ -142,7 +143,6 @@ function projectMenu(e, pid) {
 function wireSidebar() {
   $("#clear").onclick = newChat;
   $("#side-collapse").onclick = () => $("#shell").classList.add("collapsed");
-  $("#side-open").onclick = () => $("#shell").classList.remove("collapsed");
   $("#search").addEventListener("input", () => renderHistory());
   $("#toggle-archived").onclick = () => { state.showArchived = !state.showArchived; state.projectFilter = null; renderAll(); };
   $("#add-project").onclick = () => { const n = prompt("New project name"); if (n) {
@@ -374,42 +374,6 @@ function wireConnectors() {
 }
 
 /* ---------- code view ---------- */
-async function loadTree() {
-  try {
-    const d = await (await fetch("/api/tree")).json();
-    $("#tree").innerHTML = renderTree(d.tree, 0);
-    $$("#tree li[data-file]").forEach((li) => (li.onclick = () => openFile(li.dataset.file)));
-    $$("#tree li[data-file]").forEach((x) => x.classList.toggle("sel", x.dataset.file === state.activeTab));
-  } catch {}
-}
-function renderTree(nodes, depth) {
-  return nodes.map((n) => {
-    const pad = depth ? ' class="kid"' : "";
-    if (n.dir) return `<li${pad} class="dir">▸ ${esc(n.name)}</li>` + renderTree(n.children, depth + 1);
-    return `<li${pad} data-file="${esc(n.path)}">${esc(n.name)}</li>`;
-  }).join("");
-}
-async function openFile(path) {
-  if (!state.tabs.includes(path)) state.tabs.push(path);
-  state.activeTab = path;
-  $$("#tree li[data-file]").forEach((x) => x.classList.toggle("sel", x.dataset.file === path));
-  $("#editor-path").innerHTML = path.split("/").map(esc).join('<span class="sep">›</span>');
-  paintTabs();
-  try {
-    const d = await (await fetch("/api/file?path=" + encodeURIComponent(path))).json();
-    const text = d.content || d.error || "";
-    const lang = HL.langFromPath(path);
-    $("#editor-body").innerHTML = `<code>${HL.highlight(text, lang)}</code>`;
-    $("#ide-status").innerHTML = `<span>${esc(lang || "text")}</span><span>${text.split("\n").length} lines</span>` +
-      `<span class="spacer"></span><span>lead ${esc(modelSel.value || "?")}</span><span>workers ${esc(state.workerModel || "?")}</span>`;
-  } catch {}
-}
-function paintTabs() {
-  $("#ide-tabs").innerHTML = state.tabs.map((t) =>
-    `<button class="ide-tab ${t === state.activeTab ? "on" : ""}" data-tab="${esc(t)}">
-       <span>${esc(t.split("/").pop())}</span><i data-close="${esc(t)}" title="close">×</i></button>`).join("");
-}
-
 /* ---------- composer / chat ---------- */
 function wireComposer() {
   $("#composer").addEventListener("submit", (e) => { e.preventDefault(); send(); });
@@ -444,7 +408,7 @@ function addToolResult(ref, result) {
   const r = document.createElement("div"); r.className = "res " + cls;
   r.textContent = result.length > 1500 ? result.slice(0, 1500) + " …" : result;
   ref.chip.appendChild(r); bottom();
-  loadTree();
+  if (state.fsScope === "workspace") loadTree();
   // like Antigravity: when the agent writes a file while the IDE is open, show it
   if (/^(write_file|edit_file)$/.test(ref.name) && cls === "ok" && ref.args.path && document.documentElement.dataset.view === "code")
     openFile(ref.args.path);
@@ -633,41 +597,6 @@ function moveChat(toIDE) {
   else { $("#chat-view .thread").append(chat); $("#chat-view").append(wrap); }
   bottom();
 }
-function enterIDE() {
-  const sb = $("#sidebar"), shell = $("#shell");
-  moveChat(true); loadTree();
-  $("#ide-agent-model").textContent = modelSel.value || "";
-  if (shell.classList.contains("collapsed") || getComputedStyle(sb).display === "none") { shell.classList.add("ide-mode"); return; }
-  sb.classList.remove("from-light"); sb.classList.add("to-light");      // the sidebar goes into the light
-  sb.addEventListener("animationend", () => { shell.classList.add("ide-mode"); sb.classList.remove("to-light"); }, { once: true });
-}
-function leaveIDE() {
-  const sb = $("#sidebar"), shell = $("#shell");
-  moveChat(false);
-  shell.classList.remove("ide-mode");
-  sb.classList.remove("to-light"); sb.classList.add("from-light");     // and comes back out of it
-  sb.addEventListener("animationend", () => sb.classList.remove("from-light"), { once: true });
-}
-function wireIDE() {
-  $("#ide-tabs").addEventListener("click", (e) => {
-    const close = e.target.dataset.close;
-    if (close) {
-      state.tabs = state.tabs.filter((t) => t !== close);
-      if (state.activeTab === close) {
-        state.activeTab = state.tabs[state.tabs.length - 1] || null;
-        if (state.activeTab) return openFile(state.activeTab);
-        $("#editor-body").innerHTML = `<code><span class="ln">Open a file from the explorer, or ask the agent to write one.</span></code>`;
-        $("#editor-path").textContent = "no file open"; $("#ide-status").innerHTML = "";
-      }
-      return paintTabs();
-    }
-    const t = e.target.closest(".ide-tab"); if (t) openFile(t.dataset.tab);
-  });
-  $("#ide-new-chat").onclick = () => { newChat(); input.focus(); };
-  $("#reload-tree").onclick = loadTree;
-  modelSel.addEventListener("change", () => { $("#ide-agent-model").textContent = modelSel.value; });
-}
-
 /* ---------- connectors: always ready, on per chat once asked ---------- */
 async function loadConnectorNames() {
   try { state.connectorNames = ((await (await fetch("/api/connectors")).json()).connectors || []).map((c) => c.name); } catch {}
@@ -718,4 +647,164 @@ async function pollSetup(tries = 0) {
 function paintSetupLog(d) {
   const pre = $("#setup-log"); if (!pre) return;
   pre.hidden = !d.log.length; pre.textContent = d.log.join("\n"); pre.scrollTop = pre.scrollHeight;
+}
+
+/* ---------- IDE: explorer (Workspace | PC), tabs, editor ---------- */
+const splitPath = (p) => String(p).split(/[\\/]+/).filter(Boolean);
+const baseName = (p) => splitPath(p).pop() || p;
+const isDriveRoot = (p) => /^[A-Za-z]:[\\/]?$/.test(p) || p === "/";
+async function fsKids(scope, path) {
+  const box = state.fs[scope];
+  if (!box.kids.has(path)) {
+    try {
+      const d = await (await fetch(`/api/fs/list?scope=${scope}&path=${encodeURIComponent(path)}`)).json();
+      box.kids.set(path, d.items || []);
+    } catch { box.kids.set(path, []); }
+  }
+  return box.kids.get(path);
+}
+async function loadTree(refresh = true) {
+  if (refresh) { state.fs.workspace.kids.clear(); if (state.fsScope === "pc") state.fs.pc.kids.clear(); }
+  const scope = state.fsScope;
+  if (scope === "workspace") {
+    try {
+      const w = await (await fetch("/api/workspace")).json();
+      $("#ide-proj").innerHTML = `<span class="ws-name" title="${esc(w.path)}">${esc(w.name)}</span>
+        <button class="ws-change" id="ws-change" title="pick another folder on your PC">Change folder</button>` +
+        (w.custom ? `<button class="ws-change" id="ws-reset" title="back to the built-in workspace">Reset</button>` : "");
+      $("#ws-change").onclick = () => setScope("pc", true);
+      if ($("#ws-reset")) $("#ws-reset").onclick = () => useWorkspace("");
+    } catch {}
+  } else {
+    $("#ide-proj").innerHTML = state.pickingWorkspace
+      ? `<span class="ws-hint">Open a folder, then press <b>Use</b> to work in it.</span>`
+      : `<span class="ws-hint">Your drives. Click to expand.</span>`;
+  }
+  await paintTree();
+}
+async function paintTree() {
+  const scope = state.fsScope, box = state.fs[scope];
+  const rows = [];
+  const walk = async (path, depth) => {
+    for (const it of await fsKids(scope, path)) {
+      const open = it.dir && box.open.has(it.path);
+      rows.push({ ...it, depth, open });
+      if (open) await walk(it.path, depth + 1);
+    }
+  };
+  await walk("", 0);
+  const key = (p) => scope + "|" + p;
+  $("#tree").innerHTML = rows.map((r) => `<li class="node ${r.dir ? "dir" : "file"} ${key(r.path) === state.activeTab ? "sel" : ""}"
+      data-path="${esc(r.path)}" data-dir="${r.dir ? 1 : ""}" style="--d:${r.depth}">
+      <span class="tw">${r.dir ? (r.open ? "▾" : "▸") : ""}</span><span class="nm">${esc(r.name)}</span>
+      ${scope === "pc" && r.dir && !isDriveRoot(r.path) ? `<button class="use" data-use="${esc(r.path)}" title="work in this folder">Use</button>` : ""}
+    </li>`).join("") || `<li class="empty-note">${scope === "workspace" ? "This folder is empty. Ask the agent to make something." : "No drives found."}</li>`;
+}
+function setScope(scope, picking = false) {
+  state.fsScope = scope; state.pickingWorkspace = picking && scope === "pc";
+  $$("#fs-seg button").forEach((b) => b.classList.toggle("on", b.dataset.scope === scope));
+  loadTree(false);
+}
+async function useWorkspace(path) {
+  const r = await fetch("/api/workspace", { method: "POST", headers: { "Content-Type": "application/json", "X-NC": "1" },
+    body: JSON.stringify({ path }) });
+  const d = await r.json();
+  if (!r.ok) { alert(d.error || "couldn't use that folder"); return; }
+  state.fs.workspace = { open: new Set(), kids: new Map() };
+  state.tabs = state.tabs.filter((t) => !t.startsWith("workspace|")); paintTabs();
+  setScope("workspace");
+}
+async function openFile(path, scope = "workspace") {
+  const key = scope + "|" + path;
+  if (!state.tabs.includes(key)) state.tabs.push(key);
+  state.activeTab = key;
+  $$("#tree li.node").forEach((x) => x.classList.toggle("sel", state.fsScope + "|" + x.dataset.path === key));
+  $("#editor-path").innerHTML = (scope === "pc" ? '<span class="scope-tag">PC</span>' : "") +
+    splitPath(path).map(esc).join('<span class="sep">›</span>');
+  paintTabs();
+  try {
+    const url = scope === "pc" ? "/api/fs/read?path=" : "/api/file?path=";
+    const d = await (await fetch(url + encodeURIComponent(path))).json();
+    const text = d.content || d.error || "";
+    const lang = HL.langFromPath(path);
+    $("#editor-body").innerHTML = `<code>${HL.highlight(text, lang)}</code>`;
+    $("#editor-body").scrollTop = 0;
+    $("#ide-status").innerHTML = `<span>${esc(lang || "text")}</span><span>${text.split("\n").length} lines</span>` +
+      (scope === "pc" ? `<span>read-only</span>` : "") +
+      `<span class="spacer"></span><span>lead ${esc(modelSel.value || "?")}</span><span>workers ${esc(state.workerModel || "?")}</span>`;
+  } catch {}
+}
+function paintTabs() {
+  $("#ide-tabs").innerHTML = state.tabs.map((k) => {
+    const path = k.slice(k.indexOf("|") + 1);
+    return `<button class="ide-tab ${k === state.activeTab ? "on" : ""}" data-tab="${esc(k)}" title="${esc(path)}">
+       <span>${esc(baseName(path))}</span><i data-close="${esc(k)}" title="close">×</i></button>`;
+  }).join("");
+}
+function openTab(k) { const i = k.indexOf("|"); openFile(k.slice(i + 1), k.slice(0, i)); }
+
+// one chat: moves between the Chat view and the IDE's Agent panel
+function moveChat(toIDE) {
+  const wrap = $(".composer-wrap");
+  if (toIDE) $("#ide-agent-body").append(chat, wrap);
+  else { $("#chat-view .thread").append(chat); $("#chat-view").append(wrap); }
+  requestAnimationFrame(moveInd); bottom();
+}
+// the sidebar walks into the light (Web Animations API: plays even when Windows
+// "animation effects" are off, and a quick back-and-forth can't leave it stuck)
+let lightSeq = 0;
+const LIGHT = [
+  { opacity: 1, transform: "none", filter: "none" },
+  { opacity: 1, transform: "translateX(-4px) scale(.99)", filter: "brightness(1.8) saturate(.7)", offset: .45 },
+  { opacity: 0, transform: "translateX(-34px) scale(.94)", filter: "brightness(3.2) saturate(.3) blur(10px)" },
+];
+function bloom(el, ms) {
+  const b = document.createElement("div"); b.className = "light-bloom"; el.appendChild(b);
+  b.animate([{ opacity: 0 }, { opacity: 1, offset: .45 }, { opacity: 0 }], { duration: ms, easing: "ease-in-out" })
+    .finished.then(() => b.remove(), () => b.remove());
+}
+function enterIDE() {
+  const sb = $("#sidebar"), shell = $("#shell"), my = ++lightSeq;
+  moveChat(true); loadTree(); $("#ide-agent-model").textContent = modelSel.value || "";
+  sb.getAnimations().forEach((a) => a.cancel());
+  if (shell.classList.contains("collapsed") || getComputedStyle(sb).display === "none") { shell.classList.add("ide-mode"); return; }
+  const a = sb.animate(LIGHT, { duration: 750, easing: "cubic-bezier(.55,0,.8,.2)", fill: "forwards" });
+  bloom(sb, 750);
+  a.finished.then(() => { if (my === lightSeq) { shell.classList.add("ide-mode"); a.cancel(); } }, () => {});
+}
+function leaveIDE() {
+  const sb = $("#sidebar"), shell = $("#shell"); ++lightSeq;
+  moveChat(false);
+  sb.getAnimations().forEach((a) => a.cancel());
+  shell.classList.remove("ide-mode");
+  sb.animate([...LIGHT].reverse(), { duration: 600, easing: "cubic-bezier(.2,.8,.3,1)" });
+  bloom(sb, 600);
+}
+function wireIDE() {
+  $("#tree").addEventListener("click", async (e) => {
+    const use = e.target.closest("[data-use]");
+    if (use) { e.stopPropagation(); return useWorkspace(use.dataset.use); }
+    const li = e.target.closest("li.node"); if (!li) return;
+    const box = state.fs[state.fsScope], p = li.dataset.path;
+    if (li.dataset.dir) { box.open.has(p) ? box.open.delete(p) : box.open.add(p); paintTree(); }
+    else openFile(p, state.fsScope);
+  });
+  $$("#fs-seg button").forEach((b) => (b.onclick = () => setScope(b.dataset.scope)));
+  $("#ide-tabs").addEventListener("click", (e) => {
+    const close = e.target.dataset.close;
+    if (close) {
+      state.tabs = state.tabs.filter((t) => t !== close);
+      if (state.activeTab === close) {
+        state.activeTab = state.tabs[state.tabs.length - 1] || null;
+        if (state.activeTab) return openTab(state.activeTab);
+        $("#editor-body").innerHTML = `<code><span class="ln">Open a file from the explorer, or ask the agent to write one.</span></code>`;
+        $("#editor-path").textContent = "no file open"; $("#ide-status").innerHTML = "";
+      }
+      return paintTabs();
+    }
+    const t = e.target.closest(".ide-tab"); if (t) openTab(t.dataset.tab);
+  });
+  $("#ide-new-chat").onclick = () => { newChat(); input.focus(); };
+  $("#reload-tree").onclick = () => loadTree(true);
+  modelSel.addEventListener("change", () => { $("#ide-agent-model").textContent = modelSel.value; });
 }

@@ -62,6 +62,7 @@ def serve(port: int):
     backend.CFG["skills"] = paths.data("skills")
     backend.tools.set_sandbox(backend.CFG["workdir"])
     backend.tools.scan_skills(backend.CFG["skills"])
+    backend.init_workspace()        # memory in the data dir; the user's chosen workspace folder
     backend.seed_default_subagents()
     backend.startup_apps()          # Roblox Studio + Unreal: install if missing, run in background
     backend.app.run(host=HOST, port=port, threaded=True, use_reloader=False)

@@ -76,13 +76,20 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
 - Low-RAM pick: `ollama pull hermes3:3b` (~2 GB).
-- **Views**: Chat / IDE. The IDE is Antigravity-style (explorer | tabbed editor |
-  Agent panel); opening it moves the one chat DOM into the Agent panel and the sidebar
-  exits with the "into the light" animation (`.to-light` / `.from-light`).
+- **Views**: Chat / IDE; the switcher lives in the composer, before the model pill.
+  The IDE is Antigravity-style (explorer | tabbed editor | Agent panel); opening it
+  moves the one chat DOM into the Agent panel and the sidebar exits "into the light"
+  (Web Animations API in app.js — it must not depend on CSS animations, because
+  Windows "animation effects: off" = prefers-reduced-motion).
+- **Explorer**: Workspace (the agents' folder; lazy tree) | PC (drives -> folders,
+  read-only file view). "Use" on a PC folder makes it the workspace (settings
+  `workdir`, `POST /api/workspace` needs header `X-NC: 1`). MEMORY.md lives in the
+  data dir (`tools.MEMORY_PATH`), not the workspace, so switching folders keeps it.
 
 ## Backend API (keep event/field names stable, or change both sides at once)
 `/api/branding /config /settings /models /skills /memory /tree /file /vm /system /tasks
 /bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
+/fs/list /fs/read /workspace
 /git/{status,diff,push} /chat(SSE) /approve`
 SSE events: `token, tool_call, tool_result, approval, error, done`.
 

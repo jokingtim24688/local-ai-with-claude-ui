@@ -16,6 +16,9 @@ SANDBOX: Path | None = None
 SKILLS: dict[str, dict] = {}
 # Persistent notes written by the model.
 MEMORY_FILE = "MEMORY.md"
+# The lead's memory lives in the app's data folder (set by the app), NOT in the
+# workspace — switching workspaces must not lose or scatter memory.
+MEMORY_PATH: Path | None = None
 
 
 class ToolError(Exception):
@@ -147,7 +150,7 @@ def _mem_key(line: str):
 
 def memory_lines() -> list:
     try:
-        return [l for l in _jail(MEMORY_FILE).read_text(encoding="utf-8").splitlines() if l.strip()]
+        return [l for l in _mem_file().read_text(encoding="utf-8").splitlines() if l.strip()]
     except Exception:
         return []
 
@@ -156,8 +159,13 @@ def memory_text() -> str:
     return "\n".join(memory_lines())
 
 
+def _mem_file() -> Path:
+    return MEMORY_PATH or _jail(MEMORY_FILE)
+
+
 def write_memory(lines: list) -> None:
-    p = _jail(MEMORY_FILE)
+    p = _mem_file()
+    p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("\n".join(l for l in lines if l.strip()) + "\n", encoding="utf-8")
 
 

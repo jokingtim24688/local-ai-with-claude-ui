@@ -71,15 +71,7 @@
 
   <!-- MAIN -->
   <main class="main">
-    <header class="topbar">
-      <button class="icon-btn" id="side-open" title="menu">☰</button>
-      <span class="crumb" id="crumb"></span>
-      <nav class="viewseg" id="views">
-        <span class="vs-ind" id="vs-ind"></span>
-        <button data-view="chat" class="on" title="Chat"><span class="vs-ic">◗</span><span class="vs-lb">Chat</span></button>
-        <button data-view="code" title="IDE"><span class="vs-ic">&lt;/&gt;</span><span class="vs-lb">IDE</span></button>
-      </nav>
-    </header>
+    <span class="crumb" id="crumb" hidden></span>
 
     <div class="stage">
       <!-- CHAT -->
@@ -98,6 +90,11 @@
             <div class="chat-ctx" id="chat-ctx" hidden></div>
             <textarea id="input" rows="1" placeholder="Describe a model, a level, or a game mechanic…"></textarea>
             <div class="composer-bar">
+              <nav class="viewseg" id="views">
+                <span class="vs-ind" id="vs-ind"></span>
+                <button type="button" data-view="chat" class="on" title="Chat"><span class="vs-ic">◗</span><span class="vs-lb">Chat</span></button>
+                <button type="button" data-view="code" title="IDE"><span class="vs-ic">&lt;/&gt;</span><span class="vs-lb">IDE</span></button>
+              </nav>
               <div class="model-pill">
                 <span class="glyph"></span>
                 <select id="model" aria-label="model"></select>
@@ -118,9 +115,13 @@
       <section class="view" data-view="code">
         <div class="ide">
           <aside class="ide-explorer">
-            <div class="ide-head"><span>Explorer</span>
+            <div class="ide-head">
+              <div class="fs-seg" id="fs-seg">
+                <button data-scope="workspace" class="on" title="the folder the agents work in">Workspace</button>
+                <button data-scope="pc" title="browse your drives">PC</button>
+              </div>
               <button id="reload-tree" class="ide-iconbtn" title="refresh">&#8635;</button></div>
-            <div class="ide-proj" id="ide-proj">workspace</div>
+            <div class="ide-proj" id="ide-proj"></div>
             <ul id="tree" class="tree-list"></ul>
           </aside>
           <main class="ide-editor">
