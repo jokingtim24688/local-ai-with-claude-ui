@@ -17,6 +17,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 import tools
 import web
 import paths
+import apps
 
 try:
     import ollama
@@ -43,22 +44,29 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are MAIN — the one resident agent. You stay loaded, you keep
-memory, and you direct subagents.
+SYSTEM_PROMPT = """You are MAIN — the resident lead. You PLAN and DEBUG. Low-power worker
+subagents WRITE the first drafts (code, scripts, 3D models as Blender scripts).
 - MEMORY: the MEMORY block below is what you learned before. Trust it. When you
   learn something worth keeping (user preference, decision, project state, path),
   call remember("key: value") — one short fact, no filler. Same key overwrites.
-- SUBAGENTS are one-shot workers booted FRESH each time: they know NOTHING — no
-  memory, no chat, no prompt.md. Each spawn_subagent task must be a full brief:
-  goal, exact files/paths, constraints, and what "done" looks like.
-- Run ONE subagent at a time. Read its result, check it, then pick the next step.
-  design -> "designer", research -> "researcher", tests -> "tester",
-  review -> "reviewer", building -> "buddy", Windows porting -> "porter".
-- If a subagent keeps missing (weak work twice), create_skill what it lacks ONCE,
-  grant_skill it to the pool, and re-brief it. Affirm good work.
+- WORKFLOW: 1) split the job into small pieces. 2) give each piece to ONE worker with
+  spawn_subagent and a FULL brief: goal, exact file paths, language/engine,
+  constraints, done-when. Workers are small models booted fresh; they know nothing
+  else. 3) when a worker returns, DEBUG: read the files it wrote, run them
+  (run_command, blender_run, unreal_run_python, luau_check, rojo), fix bugs yourself
+  with edit_file, re-run until clean. 4) next piece. One worker at a time.
+- Workers: code -> "buddy", 3D models (bpy scripts that build + export .glb/.fbx)
+  -> "blender", Unreal Engine (editor Python, C++) -> "unreal", Roblox (Luau, Rojo)
+  -> "roblox", tests -> "tester", review -> "reviewer", specs -> "designer",
+  research -> "researcher", Windows/macOS porting -> "porter".
+- APPS: call app_status before driving Blender / Unreal / Roblox Studio. New files
+  go in the sandbox; existing projects only in folders the user registered.
+  Official docs: docs_index + fetch_docs, or load_skill("blender-python" |
+  "unreal-engine" | "roblox-studio"). Put the relevant docs facts in the brief.
+- If a worker keeps failing the same way, create_skill what it lacks ONCE,
+  grant_skill it to the pool, and re-brief. Affirm good work.
 - Track multi-step work on the task board (add_task / list_tasks).
-- WATCH THE MACHINE: get_system_load if things feel slow; disable_agent a subagent
-  that isn't needed.
+- WATCH THE MACHINE: get_system_load if things feel slow.
 All agents share one sandbox and the full skill library.
 Rules:
 - Be blunt and terse. No filler, no lecturing, no "as an AI".
@@ -69,6 +77,30 @@ Rules:
 Skills available (load full body with load_skill):
 {skills}
 """
+
+def _settings_path() -> str:
+    return paths.data("settings.json")
+
+
+def load_settings() -> dict:
+    """User settings (Customize). worker_model = the low-power model subagents use."""
+    b = load_branding()
+    d = {"worker_model": b.get("worker_model", "qwen2.5-coder:3b")}
+    try:
+        with open(_settings_path(), encoding="utf-8") as f:
+            d.update({k: v for k, v in json.load(f).items() if k in d})
+    except Exception:
+        pass
+    return d
+
+
+def save_settings(upd: dict) -> dict:
+    d = load_settings()
+    d.update({k: v for k, v in upd.items() if k in d})
+    with open(_settings_path(), "w", encoding="utf-8") as f:
+        json.dump(d, f, indent=2)
+    return d
+
 
 POOL_MODEL = ""            # "" = subagents reuse the main model (one set of weights in RAM)
 DOLPHIN = POOL_MODEL       # (kept name for compatibility)
@@ -107,7 +139,27 @@ DEFAULT_SUBAGENTS = [
                "the cross-platform-shell skill; when a script is needed, emit BOTH .sh and "
                ".bat/.ps1.",
      "model": DOLPHIN, "skills": ["cross-platform-shell", "vscode-windows-dev"], "vm": None},
+    {"id": "blender", "name": "blender",
+     "desc": "3D modeler — writes Blender Python scripts that build, texture and export models",
+     "system": "You are BLENDER, a 3D modeler who works in code. Write ONE complete bpy script "
+               "per brief that starts from an empty scene, builds the model (bmesh/from_pydata "
+               "or primitive ops), adds materials, and exports to the path in the brief "
+               "(.glb by default). No UI or viewport calls — it runs headless.",
+     "model": DOLPHIN, "skills": ["blender-python"], "vm": None},
+    {"id": "unreal", "name": "unreal",
+     "desc": "Unreal Engine dev — editor Python automation and C++ gameplay classes",
+     "system": "You are UNREAL, an Unreal Engine 5 developer. Write editor Python scripts "
+               "(import unreal, editor subsystems) or C++ classes (.h + .cpp with UCLASS/"
+               "UPROPERTY/UFUNCTION) exactly as the brief asks. Full files, correct includes.",
+     "model": DOLPHIN, "skills": ["unreal-engine"], "vm": None},
+    {"id": "roblox", "name": "roblox",
+     "desc": "Roblox dev — Luau scripts, client/server remotes, Rojo project layout",
+     "system": "You are ROBLOX, a Roblox Studio developer. Write Luau (--!strict) in a Rojo "
+               "layout (src/server/*.server.luau, src/client/*.client.luau, src/shared/*.luau) "
+               "as the brief asks. Server owns truth; validate every remote.",
+     "model": DOLPHIN, "skills": ["roblox-studio"], "vm": None},
 ]
+SPECIALISTS = ("blender", "unreal", "roblox")
 
 
 PROMPT_FILE = "prompt.md"  # shared standing prompt every agent obeys
@@ -210,7 +262,87 @@ def api_config():
         "workdir": str(tools.SANDBOX),
         "skills_dir": CFG["skills"],
         "ollama": ollama is not None,
+        "platform": {"win32": "win", "darwin": "mac"}.get(sys.platform, "linux"),
+        "worker_model": load_settings()["worker_model"],
     })
+
+
+@app.get("/api/settings")
+def api_settings():
+    return jsonify(load_settings())
+
+
+@app.post("/api/settings")
+def api_settings_save():
+    return jsonify(save_settings(request.get_json(force=True) or {}))
+
+
+# ---- creative apps: Blender / Unreal / Roblox ------------------------------
+
+@app.get("/api/apps")
+def api_apps():
+    return jsonify({"apps": apps.status(), "projects": apps.load_cfg()["projects"],
+                    "docs": {a: [{"key": k, "url": u,
+                                  "cached": os.path.isfile(apps._cache_file(u))}
+                                 for k, u in pages.items()]
+                             for a, pages in apps.DOCS.items()}})
+
+
+@app.post("/api/apps")
+def api_apps_save():
+    """{"key": "blender", "path": "..."} sets/clears an app path;
+    {"add_project": "..."} / {"remove_project": "..."} edits project folders."""
+    b = request.get_json(force=True) or {}
+    c = apps.load_cfg()
+    if b.get("key") in apps.FINDERS:
+        p = (b.get("path") or "").strip().strip('"')
+        if p and not os.path.isfile(p):
+            return jsonify({"ok": False, "error": f"no file at {p}"}), 400
+        if p:
+            c["paths"][b["key"]] = p
+        else:
+            c["paths"].pop(b["key"], None)
+    if b.get("add_project"):
+        p = os.path.abspath(os.path.expanduser(b["add_project"].strip().strip('"')))
+        if not os.path.isdir(p):
+            return jsonify({"ok": False, "error": f"no folder at {p}"}), 400
+        if p not in c["projects"]:
+            c["projects"].append(p)
+    if b.get("remove_project"):
+        c["projects"] = [x for x in c["projects"] if x != b["remove_project"]]
+    apps.save_cfg(c)
+    return api_apps()
+
+
+@app.post("/api/apps/launch")
+def api_apps_launch():
+    b = request.get_json(force=True) or {}
+    fn = {"blender": lambda: apps.blender_open(b.get("file", "")),
+          "unreal": lambda: apps.unreal_open(b.get("file", "")),
+          "roblox": lambda: apps.roblox_open(b.get("file", ""))}.get(b.get("app"))
+    if not fn:
+        return jsonify({"ok": False, "error": "unknown app"}), 400
+    try:
+        return jsonify({"ok": True, "status": fn()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
+@app.post("/api/apps/docs/prefetch")
+def api_apps_prefetch():
+    return jsonify(apps.prefetch_docs((request.get_json(force=True) or {}).get("app", "")))
+
+
+@app.post("/api/open-url")
+def api_open_url():
+    """Open an official docs page in the system browser (pywebview can't do tabs)."""
+    url = (request.get_json(force=True) or {}).get("url", "")
+    if not url.startswith("https://") or not any(
+            url.split("/")[2].endswith(d) for d in apps.DOC_DOMAINS):
+        return jsonify({"ok": False, "error": "only official docs links"}), 400
+    import webbrowser
+    webbrowser.open(url)
+    return jsonify({"ok": True})
 
 
 @app.get("/api/models")
@@ -249,6 +381,14 @@ def _subagents_path() -> str:
     return paths.data("subagents.json")
 
 
+def removed_ids() -> set:
+    try:
+        with open(paths.data("subagents.removed.json"), encoding="utf-8") as f:
+            return set(json.load(f))
+    except Exception:
+        return set()
+
+
 def load_subagents() -> list:
     try:
         with open(_subagents_path(), encoding="utf-8") as f:
@@ -258,6 +398,11 @@ def load_subagents() -> list:
     # migrate: old seeds pinned every subagent to its own 8b model -> reuse main's
     changed = False
     defaults = {d["id"]: d for d in DEFAULT_SUBAGENTS}
+    have = {s.get("id") for s in items}
+    for sid in SPECIALISTS:                 # new in this version: add once
+        if sid not in have and sid not in removed_ids():
+            items.append(dict(defaults[sid]))
+            changed = True
     for s in items:
         if s.get("model") in LEGACY_POOL_MODELS:
             s["model"] = ""
@@ -310,6 +455,9 @@ def api_subagents_save():
 @app.delete("/api/subagents/<sid>")
 def api_subagents_delete(sid):
     save_subagents([x for x in load_subagents() if x.get("id") != sid])
+    gone = removed_ids() | {sid}                 # so auto-added specialists stay deleted
+    with open(paths.data("subagents.removed.json"), "w", encoding="utf-8") as f:
+        json.dump(sorted(gone), f)
     return jsonify({"ok": True})
 
 
@@ -865,37 +1013,108 @@ def run_subagent(client, default_model: str, sub: dict, task: str) -> str:
             RUNNING_SUB["name"] = ""
 
 
+CTX = 8192                           # context window for MAIN and workers (default is 4096)
+_INSTALLED = {"at": 0.0, "names": set()}
+
+
+def installed_models(client) -> set:
+    import time
+    if time.time() - _INSTALLED["at"] > 30:
+        try:
+            data = client.list()
+            items = data.get("models", []) if isinstance(data, dict) else getattr(data, "models", [])
+            _INSTALLED["names"] = {(m.get("model") or m.get("name")) if isinstance(m, dict)
+                                   else (getattr(m, "model", None) or getattr(m, "name", ""))
+                                   for m in items}
+            _INSTALLED["at"] = time.time()
+        except Exception:
+            pass
+    return _INSTALLED["names"]
+
+
+def worker_model_for(client, sub: dict, main_model: str) -> tuple[str, str]:
+    """(model, note). A subagent's own model, else the low-power worker model, else
+    MAIN's model if the worker model isn't pulled yet."""
+    want = sub.get("model") or load_settings()["worker_model"]
+    if not want or want == main_model:
+        return main_model, ""
+    have = installed_models(client)
+    if have and want not in have and f"{want}:latest" not in have:
+        return main_model, f"(worker model {want} not pulled — ran on {main_model}; `ollama pull {want}`)"
+    return want, ""
+
+
+def _auto_checks(files: list) -> list:
+    """Cheap, offline checks on what a worker wrote. Evidence for MAIN's debug pass."""
+    import shutil
+    import subprocess
+    out = []
+    for rel in files:
+        try:
+            p = tools._jail(rel)
+            ext = p.suffix.lower()
+            src = p.read_text(encoding="utf-8", errors="replace")
+            if ext == ".py":
+                compile(src, rel, "exec")
+                out.append(f"{rel}: OK (compiles)" + (" — Blender script: blender_run it"
+                                                       if "import bpy" in src else
+                                                       " — Unreal script: unreal_run_python it"
+                                                       if "import unreal" in src else ""))
+            elif ext in (".json", ".uproject", ".uplugin"):
+                json.loads(src)
+                out.append(f"{rel}: OK (valid JSON)")
+            elif ext in (".js", ".mjs", ".cjs") and shutil.which("node"):
+                r = subprocess.run(["node", "--check", str(p)], capture_output=True, text=True, timeout=30)
+                out.append(f"{rel}: " + ("OK (node --check)" if r.returncode == 0
+                                          else "SYNTAX ERROR\n" + (r.stderr or r.stdout)[-600:]))
+            elif ext in (".lua", ".luau"):
+                if apps.app_path("luau"):
+                    out.append(f"{rel}: " + apps.luau_check(rel)[:600])
+                else:
+                    out.append(f"{rel}: not linted (install luau-analyze or selene)")
+            else:
+                out.append(f"{rel}: written ({len(src)} chars, no auto-check for {ext or 'this type'})")
+        except SyntaxError as e:
+            out.append(f"{rel}: SYNTAX ERROR line {e.lineno}: {e.msg}")
+        except json.JSONDecodeError as e:
+            out.append(f"{rel}: INVALID JSON line {e.lineno}: {e.msg}")
+        except Exception as e:
+            out.append(f"{rel}: check failed ({e})")
+    return out
+
+
 def _run_subagent(client, default_model: str, sub: dict, task: str) -> str:
     who = sub.get("name", "subagent")
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse.",
-                 "You were booted fresh for ONE job. Do exactly the brief, then reply "
-                 "with a short result: what you did, files touched, anything unfinished. "
-                 "More skills: load_skill(name)."]
+                 "You were booted fresh for ONE job. Write the files the brief asks for with "
+                 "write_file (complete files, no placeholders), then reply with a short result: "
+                 "what you did, files written, anything unfinished. MAIN runs and debugs your "
+                 "work after you. More skills: load_skill(name)."]
     for name in sub.get("skills", []):              # preload only its assigned skills
         s = tools.SKILLS.get(name)
         if s:
             sys_lines.append(f"\n# skill: {name}\n{s['body']}")
     msgs = [{"role": "system", "content": "\n".join(sys_lines)},
             {"role": "user", "content": task}]
-    model = sub.get("model") or default_model
+    model, note = worker_model_for(client, sub, default_model)
     # same model as MAIN -> already resident. A different one unloads when done.
     keep = -1 if model == default_model else 0
     import connectors as C
     mcp_schemas, mcp_index = C.list_tools(load_connectors())
-    # file tools + load_skill + MCP. No memory/bus/board: MAIN owns those.
+    # file tools + load_skill + MCP. No memory/bus/board/apps: MAIN owns those.
     schemas = [x for x in tools.SCHEMAS if x["function"]["name"] != "remember"] + mcp_schemas
-    log = []
-    for _ in range(6):
+    log, touched, acc = [], [], ""
+    for _ in range(10):
         acc = ""
         calls = []
         for chunk in client.chat(model=model, messages=msgs, keep_alive=keep,
-                                 tools=schemas, stream=True):
+                                 options={"num_ctx": CTX}, tools=schemas, stream=True):
             m = chunk.get("message", {})
             acc += m.get("content") or ""
             calls += m.get("tool_calls") or []
         msgs.append({"role": "assistant", "content": acc, "tool_calls": calls or None})
         if not calls:
-            return acc.strip() + ("\n" + " | ".join(log) if log else "")
+            break
         for tc in calls:
             fn = tc.get("function", {})
             nm = fn.get("name", "")
@@ -908,19 +1127,31 @@ def _run_subagent(client, default_model: str, sub: dict, task: str) -> str:
             if nm in mcp_index:
                 sv, tn = mcp_index[nm]
                 r = C.call_tool(sv, tn, args)
+            elif nm == "remember":
+                r = "error: only MAIN keeps memory"
             else:
-                r = dispatch_bus(nm, args, who)
-                if r is None:
-                    r = dispatch_tasks(nm, args, who)
-                if r is None:
-                    r = dispatch_skill(nm, args, who)
-                if r is None:
-                    r = ("error: only MAIN keeps memory" if nm == "remember"
-                         else tools.run_tool(nm, args))
+                r = tools.run_tool(nm, args)
+            if nm in ("write_file", "edit_file") and r.startswith("OK") and args.get("path"):
+                if args["path"] not in touched:
+                    touched.append(args["path"])
             log.append(f"{nm}→{r[:40]}")
             msgs.append({"role": "tool", "content": r})
-    return (acc.strip() if acc else "subagent hit step limit") + (
-        "\n" + " | ".join(log) if log else "")
+    else:
+        acc = (acc + "\n(hit the step limit)").strip()
+    report = [f"[{who} finished — fresh boot on {model}] {note}".rstrip(),
+              acc.strip() or "(no summary)"]
+    if touched:
+        report.append("FILES: " + ", ".join(touched))
+        report.append("AUTO-CHECKS:\n" + "\n".join("- " + c for c in _auto_checks(touched)))
+        report.append("PARENT: debug now — read each file, run it (run_command / blender_run / "
+                      "unreal_run_python / luau_check / rojo), fix what's broken yourself with "
+                      "edit_file, re-run until clean. Only re-delegate big rewrites.")
+    else:
+        report.append("FILES: none written. PARENT: check the answer; re-brief with exact file "
+                      "paths if code was expected.")
+    if log:
+        report.append("steps: " + " | ".join(log))
+    return "\n".join(report)
 
 
 # ---- code view: file tree + read ------------------------------------------
@@ -1091,7 +1322,8 @@ def api_approve():
 
 def gate(name: str, args: dict, ask: bool):
     """Yield an SSE approval round-trip for a gated tool. Returns True if allowed."""
-    if not ask or (name not in tools.GATED and not name.startswith("mcp__")):
+    if not ask or (name not in tools.GATED and name not in apps.GATED
+                   and not name.startswith("mcp__")):
         return True, ""
     cid = uuid.uuid4().hex
     ev = threading.Event()
@@ -1124,14 +1356,14 @@ def api_chat():
         mcp_schemas, mcp_index = C.list_tools(load_connectors())
         schemas = None
         if tool_mode:
-            schemas = list(tools.SCHEMAS) + mcp_schemas
+            schemas = list(tools.SCHEMAS) + apps.SCHEMAS + mcp_schemas
             if use_web:
                 schemas = schemas + web.SCHEMAS
             if subs:
                 names = ", ".join(s["name"] for s in subs)
                 schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + SYS_SCHEMAS + [{"type": "function", "function": {
                     "name": "spawn_subagent",
-                    "description": f"Boot a subagent FRESH for one job and get its result. It knows nothing else, so `task` must be a full brief (goal, files, constraints, done-when). One at a time. Available: {names}.",
+                    "description": f"Boot a low-power worker FRESH to write one piece; you get its result, the files it wrote and auto-check output, then YOU debug. It knows nothing else, so `task` must be a full brief (goal, exact file paths, engine/language, constraints, done-when). One at a time. Available: {names}.",
                     "parameters": {"type": "object", "properties": {
                         "name": {"type": "string"}, "task": {"type": "string"}},
                         "required": ["name", "task"]}}}]
@@ -1141,7 +1373,7 @@ def api_chat():
                 acc = ""
                 calls = []
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
-                                    tools=schemas, stream=True)
+                                    options={"num_ctx": CTX}, tools=schemas, stream=True)
                 for chunk in resp:
                     msg = chunk.get("message", {})
                     piece = msg.get("content") or ""
@@ -1193,6 +1425,8 @@ def api_chat():
                         else:
                             result = (run_subagent(client, model, sub, args.get("task", ""))
                                       if sub else f"error: no subagent '{args.get('name')}'")
+                    elif name in apps.REGISTRY:
+                        result = apps.run_tool(name, args)
                     elif name in web.REGISTRY:
                         result = web.run_web_tool(name, args) if use_web \
                             else "error: web tools disabled this turn"

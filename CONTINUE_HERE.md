@@ -11,7 +11,7 @@ Checklist (tick in git log / PROGRESS.md PIVOT 19):
       unreal_run_python, unreal_uat, roblox_open, rojo, luau_check, app_launch,
       app_status, fetch_docs (whitelisted official docs + disk cache)
 - [x] skills: blender-python, unreal-engine, roblox-studio (condensed public docs + links)
-- [ ] app.py: worker_model (default qwen2.5-coder:3b), specialists blender/unreal/roblox,
+- [x] app.py: worker_model (default qwen2.5-coder:3b), specialists blender/unreal/roblox,
       post-run auto checks (compile/json/node/luau) + "PARENT: debug now" handoff,
       /api/apps endpoints, main-only app tools (gated)
 - [ ] UI: midnight theme rewrite of static/style.css, Catppuccin code blocks,

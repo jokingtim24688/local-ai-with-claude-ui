@@ -277,10 +277,14 @@ def unreal_uat(args, timeout: int = 3600) -> str:
     return f"exit={code}\n" + _tail(out)
 
 
-def unreal_open(project: str) -> str:
-    exe = find_unreal(gui=True) or _need("unreal")
-    _spawn([exe, resolve(project)])
-    return f"OK: Unreal Editor opening {project}"
+def unreal_open(project: str = "") -> str:
+    exe = (load_cfg()["paths"].get("unreal") and _need("unreal")) or find_unreal(gui=True) \
+        or _need("unreal")
+    if exe.endswith(("UnrealEditor-Cmd.exe", "UE4Editor-Cmd.exe")):   # want the windowed editor
+        gui = exe.replace("-Cmd.exe", ".exe")
+        exe = gui if os.path.isfile(gui) else exe
+    _spawn([exe] + ([resolve(project)] if project else []))
+    return "OK: Unreal Editor opening" + (f" {project}" if project else "")
 
 
 def roblox_open(place: str = "") -> str:

@@ -16,3 +16,8 @@ connectors.json
 targets.json
 prompt.md
 MEMORY.md
+settings.json
+apps.json
+subagents.removed.json
+docs-cache/
+AiHeaven-data/
