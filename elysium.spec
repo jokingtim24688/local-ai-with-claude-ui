@@ -48,25 +48,38 @@ _ico = "assets/icon.ico" if sys.platform == "win32" else None
 if _ico and not os.path.exists(_ico):
     _ico = None
 
-exe = EXE(
-    pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
-    name=APP,
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    runtime_tmpdir=None,
-    console=False,               # no terminal window
-    icon=_ico,
-)
+MAC = sys.platform == "darwin"
+VERSION = "0.2.0"
 
-# macOS: wrap into a proper .app bundle
-if sys.platform == "darwin":
-    _icns = "assets/icon.icns" if os.path.exists("assets/icon.icns") else None
+if not MAC:
+    # Windows / Linux: one self-contained file
+    exe = EXE(
+        pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
+        name=APP,
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=True,
+        runtime_tmpdir=None,
+        console=False,               # no terminal window
+        icon=_ico,
+    )
+else:
+    # macOS: a proper .app bundle (onedir inside; onefile .app is deprecated)
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name=APP, debug=False,
+              strip=False, upx=False, console=False)
+    coll = COLLECT(exe, a.binaries, a.zipfiles, a.datas, strip=False, upx=False, name=APP)
     app = BUNDLE(
-        exe,
+        coll,
         name=f"{APP}.app",
-        icon=_icns,
-        bundle_identifier="ai.heaven.app",
-        info_plist={"NSHighResolutionCapable": True},
+        icon="assets/icon.icns" if os.path.exists("assets/icon.icns") else None,
+        bundle_identifier="app.aiheaven.desktop",
+        version=VERSION,
+        info_plist={
+            "CFBundleName": APP,
+            "CFBundleDisplayName": APP,
+            "CFBundleShortVersionString": VERSION,
+            "NSHighResolutionCapable": True,
+            "LSMinimumSystemVersion": "11.0",
+        },
     )

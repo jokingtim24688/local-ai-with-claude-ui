@@ -1,4 +1,4 @@
-# >>> ACTIVE REWORK (2026-09-26) — resume here if the chat dies <<<
+# >>> REWORK 2026-09-26 — DONE (see PROGRESS.md PIVOT 19) <<<
 User asked: (1) Mac + Windows app, (2) agents manage Unreal Engine, Blender,
 Roblox Studio + public docs for each, (3) theme: midnight app + Catppuccin
 ("cappuccino") code colors, (4) keep subagents but they run LOW-POWER coder models
@@ -17,7 +17,7 @@ Checklist (tick in git log / PROGRESS.md PIVOT 19):
 - [x] UI: midnight theme rewrite of static/style.css, Catppuccin code blocks,
       static/hl.js highlighter, markdown code fences in chat, Apps tab in Customize
 - [x] logo: crescent mark -> assets/logo.svg, icon.ico, icon.icns
-- [ ] build_mac.sh (+ nuitka mac flags), docs (CLAUDE.md, PROGRESS.md), previews
+- [x] build_mac.sh (+ nuitka mac flags), docs (CLAUDE.md, PROGRESS.md), previews
 Redo recipe: read this list, `git log --oneline -15`, continue the first unchecked item.
 
 # CONTINUE HERE — Ai Heaven handoff
@@ -49,8 +49,7 @@ See CLAUDE.md, HANDOFF.md, VM_DESIGN.md, PROGRESS.md.
   `--windows-icon-from-ico`, `elysium.spec`); needs a rebuild + Windows icon-cache
   refresh to show.
 
-## OPEN BUG — fix this next
-**Dragging the window from the top bar crashes with a Python `RecursionError`:**
+## FIXED (PIVOT 19) — was: **Dragging the window from the top bar crashes with a Python `RecursionError`:**
 console spams `Empty.Empty.Empty.…: maximum recursion depth exceeded`.
 
 - Trigger: user grabbed the titlebar drag region and the window died.

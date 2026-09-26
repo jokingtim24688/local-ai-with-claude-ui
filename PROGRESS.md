@@ -250,3 +250,23 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - desktop.py sets low-RAM OLLAMA_* env when it starts Ollama.
 - VM avatars: only the running subagent is active/looking.
 - Still open from before: window-drag RecursionError, PR #1 merge conflict.
+
+## PIVOT 19 — Mac + Windows, Blender/Unreal/Roblox, midnight theme, workers write / lead debugs
+- Mac + Windows: desktop.py finds Ollama on bare PATHs, mac traffic-light controls,
+  data in ~/Library/Application Support/AiHeaven when frozen, icon.icns, Nuitka mac
+  .app bundle (build_nuitka.py), PyInstaller onedir+BUNDLE on mac (elysium.spec, build.sh).
+- Drag crash FIXED: js_api Api kept the window in a public attribute; pywebview walks
+  public attrs recursively into the native object ("Empty.Empty… recursion"). Now _window.
+- apps.py: Blender / Unreal (Epic LauncherInstalled.dat aware) / Roblox Studio / Rojo /
+  luau detection; blender_run (-b --python-exit-code 1), unreal_run_python
+  (-run=pythonscript), unreal_uat, *_open, rojo, luau_check; fetch_docs/docs_index over
+  an index of official pages (docs.blender.org, dev.epicgames.com, create.roblox.com,
+  rojo.space, luau.org) with an offline disk cache. Skills: blender-python,
+  unreal-engine, roblox-studio. NOTE: those doc hosts are blocked from the cloud dev
+  sandbox, so the index URLs weren't live-checked here — dead ones fail gracefully.
+- Workers: low-power worker_model (qwen2.5-coder:3b) writes; specialists blender /
+  unreal / roblox; result returns FILES + AUTO-CHECKS; MAIN debugs (system prompt).
+- UI: style.css rewrite (midnight + crema, glass only on floating chrome), Catppuccin
+  Mocha on all code, static/hl.js highlighter + chat markdown, Apps tab, worker model
+  picker, bundled OFL fonts, crescent logo. Previews regenerated (preview_*.png).
+- Still open: PR #1 README conflict (waiting on the user: keep both / app docs / notes).

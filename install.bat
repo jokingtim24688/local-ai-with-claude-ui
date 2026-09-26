@@ -28,11 +28,9 @@ echo Starting Ollama...
 start "" /b ollama serve
 timeout /t 2 >nul
 
-for /f %%i in ('ollama list ^| find /c /v ""') do set LINES=%%i
-if "%LINES%"=="1" (
-  echo No models yet - pulling a good default ^(qwen2.5-coder:7b^)...
-  ollama pull qwen2.5-coder:7b
-)
+rem the lead (debugs) + the low-power worker (writes first drafts)
+ollama list | find "hermes3:8b" >nul || (echo Pulling the lead model hermes3:8b... & ollama pull hermes3:8b)
+ollama list | find "qwen2.5-coder:3b" >nul || (echo Pulling the worker model qwen2.5-coder:3b... & ollama pull qwen2.5-coder:3b)
 
 echo Launching Ai Heaven...
 python desktop.py

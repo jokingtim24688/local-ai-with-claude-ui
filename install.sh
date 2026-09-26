@@ -21,8 +21,8 @@ if ! command -v ollama >/dev/null; then
 fi
 
 echo "Starting Ollama..."; (ollama serve >/dev/null 2>&1 &) ; sleep 2
-if [ "$(ollama list | wc -l)" -le 1 ]; then
-  echo "No models yet - pulling qwen2.5-coder:7b..."; ollama pull qwen2.5-coder:7b
-fi
+# the lead (debugs) + the low-power worker (writes first drafts)
+ollama list | grep -q "hermes3:8b" || { echo "Pulling the lead model hermes3:8b..."; ollama pull hermes3:8b; }
+ollama list | grep -q "qwen2.5-coder:3b" || { echo "Pulling the worker model qwen2.5-coder:3b..."; ollama pull qwen2.5-coder:3b; }
 
 echo "Launching Ai Heaven..."; python3 desktop.py
