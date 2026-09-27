@@ -1,3 +1,13 @@
+# >>> LATEST (2026-09-27) — resume here <<<
+Last pushed: ef0fae3 "Make the lead act instead of printing JSON or instructions".
+User reported the lead printing tool-call JSON / instructions (they were on a qwen
+model; screenshots showed llama3.2:3b too). Fix shipped: toolcalls.py + lean lead +
+app_control/open_url/unreal_quick_level/blender one-shot. NOT yet verified on the
+user's PC. Next: read the user's queued prompt; if tool calls still fail, check which
+qwen tag they use (qwen2.5-coder's Ollama template emits text calls; qwen3 / qwen2.5
+instruct use real tool calls) and look at update.log + the chat output.
+Open item: PR #1 README conflict — still waiting on the user's choice.
+
 # >>> REWORK 2 (IDE + connectors + auto-setup) — DONE, see PROGRESS.md PIVOT 20 <<<
 User asked: remove VM + Terminal tabs (agents keep running in the background);
 IDE view looks like Google Antigravity (explorer | editor tabs | agent chat panel on
