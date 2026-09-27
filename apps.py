@@ -151,10 +151,15 @@ FINDERS = {
     "roblox": find_roblox,
     "rojo": lambda: _which("rojo"),
     "luau": lambda: _which("luau-analyze") or _which("selene"),
+    "openscad": lambda: __import__("engines").find_openscad(),
+    "uefn": lambda: __import__("engines").find_uefn(),
+    "runinroblox": lambda: _which("run-in-roblox"),
 }
 
 LABELS = {"blender": "Blender", "unreal": "Unreal Engine", "roblox": "Roblox Studio",
-          "rojo": "Rojo (Roblox sync)", "luau": "luau-analyze / selene"}
+          "rojo": "Rojo (Roblox sync)", "luau": "luau-analyze / selene",
+          "openscad": "OpenSCAD", "uefn": "UEFN (Unreal Editor for Fortnite)",
+          "runinroblox": "run-in-roblox (Studio test runner)"}
 
 
 def app_path(key: str) -> str | None:
@@ -179,6 +184,16 @@ def status() -> list:
 
 # ---- path policy -----------------------------------------------------------
 
+def _std_roots() -> list:
+    """Documents/Unreal Projects and Documents/Fortnite Projects, where the engines keep
+    projects on this PC (engines.py) — engine tools may work there directly."""
+    try:
+        import engines
+        return engines.standard_roots()
+    except Exception:
+        return []
+
+
 def resolve(p: str, must_exist: bool = True) -> str:
     """Relative -> inside the sandbox. Absolute -> must sit inside the sandbox or a
     registered project root. Raises ToolError otherwise."""
@@ -190,7 +205,7 @@ def resolve(p: str, must_exist: bool = True) -> str:
             raise tools.ToolError(f"not found in sandbox: {p}")
         return str(j)
     real = Path(p).expanduser().resolve()
-    roots = [tools.SANDBOX] + [Path(r).expanduser().resolve() for r in load_cfg()["projects"]]
+    roots = [tools.SANDBOX] + [Path(r).expanduser().resolve() for r in load_cfg()["projects"] + _std_roots()]
     if not any(r and (real == r or r in real.parents) for r in roots):
         raise tools.ToolError(f"blocked: '{p}' is outside the sandbox and the registered "
                               "project folders (add it in Customize -> Apps)")
@@ -391,9 +406,23 @@ DOCS = {
         "luau-syntax": "https://luau.org/syntax",
         "luau-types": "https://luau.org/typecheck",
     },
+    "openscad": {
+        "cheatsheet": "https://openscad.org/cheatsheet/",
+        "manual": "https://en.wikibooks.org/wiki/OpenSCAD_User_Manual",
+        "command-line": "https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Using_OpenSCAD_in_a_command_line_environment",
+        "documentation": "https://openscad.org/documentation.html",
+    },
+    "uefn": {
+        "home": "https://dev.epicgames.com/documentation/en-us/uefn",
+        "verse-reference": "https://dev.epicgames.com/documentation/en-us/uefn/verse-language-reference",
+        "verse-api": "https://dev.epicgames.com/documentation/en-us/uefn/verse-api",
+        "devices-api": "https://dev.epicgames.com/documentation/en-us/uefn/verse-api/fortnitedotcom/devices",
+        "learn-verse": "https://dev.epicgames.com/documentation/en-us/uefn/learn-the-basics-of-writing-code-in-verse",
+        "landscape": "https://dev.epicgames.com/documentation/en-us/uefn/landscape-mode-in-unreal-editor-for-fortnite",
+    },
 }
 DOC_DOMAINS = ("docs.blender.org", "dev.epicgames.com", "create.roblox.com",
-               "rojo.space", "luau.org", "luau-lang.org")
+               "rojo.space", "luau.org", "luau-lang.org", "openscad.org", "en.wikibooks.org")
 
 
 def _cache_file(url: str) -> str:
@@ -438,7 +467,8 @@ def fetch_docs(app: str = "", page: str = "", max_chars: int = 12000) -> str:
     return f"[{src}] {url}\n\n" + text[:max_chars]
 
 
-SKILL_FOR = {"blender": "blender-python", "unreal": "unreal-engine", "roblox": "roblox-studio"}
+SKILL_FOR = {"blender": "blender-python", "unreal": "unreal-engine", "roblox": "roblox-studio",
+             "openscad": "openscad-cad", "uefn": "fortnite-map-maker"}
 
 
 def docs_index(app: str = "") -> str:
@@ -669,10 +699,20 @@ REGISTRY = {
     "app_control": app_control,
     "open_url": open_url,
     "unreal_quick_level": unreal_quick_level,
+    # engines.py (looked up at call time: apps <-> engines import each other)
+    "openscad_render": lambda **a: __import__("engines").openscad_render(**a),
+    "verse_check": lambda **a: __import__("engines").verse_check(**a),
+    "run_plan": lambda **a: __import__("engines").run_plan(**a),
+    "unreal_new_project": lambda **a: __import__("engines").unreal_new_project(**a),
+    "terrain_heightmap": lambda **a: __import__("engines").terrain_heightmap(**a),
+    "uefn_open": lambda **a: __import__("engines").uefn_open(**a),
+    "uefn_list": lambda **a: __import__("engines").uefn_list(**a),
+    "roblox_test": lambda **a: __import__("engines").roblox_test(**a),
 }
 # run code or launch programs -> approval unless Auto is on
 GATED = {"blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
-         "roblox_open", "rojo", "app_control", "unreal_quick_level"}
+         "roblox_open", "rojo", "app_control", "unreal_quick_level", "openscad_render", "run_plan",
+         "unreal_new_project", "uefn_open", "roblox_test"}
 
 
 def _fn(name, desc, props=None, req=None):
@@ -712,6 +752,25 @@ SCHEMAS = [
     _fn("unreal_quick_level", "Make a simple playable Unreal level in one step (floor, sun, sky, "
         "player start) and open it in the editor. No project given = creates a new one.",
         {"name": _S, "project": _S}),
+    _fn("openscad_render", "Compile an OpenSCAD model to .stl + .png preview; reports errors and "
+        "triangle count. Give `file` (.scad in the workspace) or inline `code`.",
+        {"file": _S, "code": _S, "out": _S}),
+    _fn("run_plan", "Build from a JSON plan file: kind ue_layout (Unreal level), obby (Roblox place), "
+        "island (Fortnite terrain + props + Verse), terrain (heightmap). project= optional.",
+        {"plan": _S, "project": _S}, ["plan"]),
+    _fn("verse_check", "Offline check of a UEFN Verse file for common mistakes (UEFN does the real compile).",
+        {"file": _S}, ["file"]),
+    _fn("unreal_new_project", "New UE5 project from an engine template: blank, thirdperson, firstperson, "
+        "topdown, vehicle. location: '' = workspace, 'pc' = Documents/Unreal Projects.",
+        {"name": _S, "template": _S, "location": _S}, ["name"]),
+    _fn("terrain_heightmap", "Make a 16-bit landscape heightmap PNG (style island/hills/flat/canyon, "
+        "terraces=4 for Fortnite-style plateaus) for UE5 or UEFN Landscape import.",
+        {"out": _S, "size": {"type": "integer"}, "seed": {"type": "integer"}, "style": _S,
+         "terraces": {"type": "integer"}}),
+    _fn("uefn_list", "List the user's UEFN (Fortnite) projects."),
+    _fn("uefn_open", "Open UEFN, optionally on a project (name from uefn_list or a path).", {"project": _S}),
+    _fn("roblox_test", "Run a Luau test script inside Roblox Studio on a place (needs run-in-roblox).",
+        {"place": _S, "script": _S}, ["place", "script"]),
     _fn("fetch_docs", "Read an OFFICIAL docs page for blender / unreal / roblox (cached for offline). "
         "page = a key from docs_index or a full official docs URL.",
         {"app": _S, "page": _S}, ["app", "page"]),
@@ -891,6 +950,10 @@ def run_setup(install: bool = True, launch: bool = True) -> None:
         if not roblox and install:
             install_roblox()
             roblox = find_roblox()
+        if install and not app_path("openscad"):
+            _log("OpenSCAD not found — installing")
+            ok = _winget("OpenSCAD.OpenSCAD") if WIN else _brew_cask("openscad") if MAC else False
+            _log("OpenSCAD installed" if ok else "couldn't install OpenSCAD automatically — https://openscad.org/downloads.html")
         unreal = find_unreal(gui=True) or app_path("unreal")
         if unreal and unreal.endswith("-Cmd.exe") and os.path.isfile(unreal.replace("-Cmd.exe", ".exe")):
             unreal = unreal.replace("-Cmd.exe", ".exe")          # launch the windowed editor

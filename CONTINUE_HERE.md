@@ -1,3 +1,12 @@
+# >>> ACTIVE: ENGINE BRIDGE (user prompt was cut off after Component 1) <<<
+Goal: OpenSCAD + UE5 + UEFN/Verse + Roblox bridge for a 3B lead (qwen2.5-coder:3b),
+dynamic skill loader, execution tags, JSON plans, CLI.
+- [x] skill_router.py, exec_tags.py, engines.py, apps.py registration
+- [ ] skills: openscad-cad, fortnite-map-maker, roblox-obby-builder, unreal-level-layout (+triggers on old ones)
+- [ ] app.py: routed skills in lead + worker prompts, domain tool filtering, exec tags -> calls,
+      auto-checks (.scad compile, .verse lint, plan validate), specialists openscad/fortnite
+- [ ] nightcrew_cli.py, docs/ENGINE_BRIDGE.md, tests, commit/push
+
 # >>> LATEST (2026-09-27) — resume here <<<
 Last pushed: ef0fae3 "Make the lead act instead of printing JSON or instructions".
 User reported the lead printing tool-call JSON / instructions (they were on a qwen
