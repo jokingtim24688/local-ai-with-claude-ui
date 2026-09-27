@@ -510,8 +510,9 @@ function paintWorkerSelect() {
 
 /* ---------- apps (Blender / Unreal / Roblox) ---------- */
 const APP_GLYPH = { blender: ["Bl", "blender"], unreal: ["UE", "unreal"], roblox: ["Rb", "roblox"],
-  rojo: ["Rj", "tool"], luau: ["Lu", "tool"] };
-const DOC_APP = { blender: "blender", unreal: "unreal", roblox: "roblox" };
+  rojo: ["Rj", "tool"], luau: ["Lu", "tool"], openscad: ["Sc", "blender"], uefn: ["Fn", "roblox"],
+  runinroblox: ["Rt", "tool"] };
+const DOC_APP = { blender: "blender", unreal: "unreal", roblox: "roblox", openscad: "openscad", uefn: "uefn" };
 let appsData = null;
 async function loadApps() {
   try { appsData = await (await fetch("/api/apps")).json(); } catch { return; }
@@ -525,7 +526,8 @@ async function loadApps() {
     const [g, cls] = APP_GLYPH[a.key] || ["?", "tool"];
     const docs = DOC_APP[a.key] ? (appsData.docs[a.key] || []).map((d) =>
       `<button class="doc-link ${d.cached ? "cached" : ""}" data-url="${esc(d.url)}">${esc(d.key)}</button>`).join("") : "";
-    const launch = DOC_APP[a.key] && a.found ? `<button class="pill ghost small" data-launch="${a.key}">Open</button>` : "";
+    const launch = ["blender", "unreal", "roblox", "uefn"].includes(a.key) && a.found
+      ? `<button class="pill ghost small" data-launch="${a.key}">Open</button>` : "";
     return `<li class="app-card" data-key="${a.key}">
       <div class="app-top"><span class="app-glyph ${cls}">${g}</span>
         <span class="app-name">${esc(a.label)}</span>

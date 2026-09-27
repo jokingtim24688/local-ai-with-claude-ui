@@ -1,6 +1,8 @@
 ---
 name: roblox-studio
 description: Roblox Studio — Luau scripting, client/server, RemoteEvents, DataStores, Rojo projects, Open Cloud, importing 3D models.
+domain: roblox
+triggers: roblox, roblox studio, luau, rojo, remoteevent, datastore, leaderstats, tween, rbxl
 ---
 
 # roblox-studio  (full docs: fetch_docs("roblox", "<key>"), keys via docs_index("roblox"))

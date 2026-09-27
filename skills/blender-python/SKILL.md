@@ -1,6 +1,8 @@
 ---
 name: blender-python
 description: Blender 4.x/5.x Python (bpy) — build 3D models by script, materials, modifiers, export glb/fbx/obj, headless runs.
+domain: blender
+triggers: blender, bpy, .blend, glb, gltf, fbx, low poly model, low-poly model, 3d model, mesh, material, sculpt, render
 ---
 
 # blender-python  (full docs: fetch_docs("blender", "<key>"), keys via docs_index("blender"))

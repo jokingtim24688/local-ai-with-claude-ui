@@ -1,6 +1,8 @@
 ---
 name: unreal-engine
 description: Unreal Engine 5 — editor Python automation, C++ gameplay classes, asset import, building and packaging.
+domain: unreal
+triggers: unreal, ue5, unreal engine, blueprint, c++ class, actor, uproject, uat, package game, editor python
 ---
 
 # unreal-engine  (full docs: fetch_docs("unreal", "<key>"), keys via docs_index("unreal"))

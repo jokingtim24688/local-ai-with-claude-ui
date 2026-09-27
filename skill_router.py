@@ -55,21 +55,21 @@ def score(task: str, triggers: list) -> int:
 
 
 def route(task: str, assigned=None, budget: int = BUDGET) -> list:
-    """-> [(skill_name, text)] to inject. Best-scoring domain wins; assigned skills
-    are always included first. Everything is cut to fit `budget` characters."""
+    """-> [(skill_name, text)] to inject: the best-scoring domain's skills first, then
+    the agent's assigned skills if there's room. Cut to fit `budget` characters."""
     cat = catalog()
     picked, seen = [], set()
-    for name in assigned or []:
-        if name in tools.SKILLS and name not in seen:
-            picked.append(name)
-            seen.add(name)
     ranked = sorted(((score(task, c["triggers"]), n) for n, c in cat.items()), reverse=True)
-    if ranked and ranked[0][0] > 0:
+    if ranked and ranked[0][0] > 0:                 # task-matched skills first: they fit THIS job
         top_domain = cat[ranked[0][1]]["domain"]
         for sc, n in ranked:
             if sc > 0 and cat[n]["domain"] == top_domain and n not in seen:
                 picked.append(n)
                 seen.add(n)
+    for name in assigned or []:                     # then the agent's own skills, if room
+        if name in tools.SKILLS and name not in seen:
+            picked.append(name)
+            seen.add(name)
     out, used = [], 0
     for n in picked:
         body = tools.SKILLS[n]["body"]

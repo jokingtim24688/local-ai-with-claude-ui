@@ -16,9 +16,12 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 import tools
 import toolcalls
+import exec_tags
+import skill_router
 import web
 import paths
 import apps
+import engines
 
 try:
     import ollama
@@ -56,9 +59,16 @@ Which tool:
   bpy `code`, save_as="models/<name>.blend", open_after=true
 - a simple / blank Unreal level -> unreal_quick_level; other Unreal work ->
   unreal_run_python (editor Python) on a project
-- Roblox -> write Luau files (Rojo layout), luau_check, rojo, roblox_open
+- Roblox -> an obby/place: a plan (kind obby); scripts: luau files, luau_check, roblox_open
+- 3D-printable / mechanical parts -> OpenSCAD: openscad_render
+- Fortnite / UEFN island or game rules -> a plan (kind island) or a Verse file, verse_check
 - files and commands in the workspace -> read_file / write_file / edit_file / run_command
 - check what's installed -> app_status
+To write code, reply with a fenced block whose first line says where it goes and
+whether to run it: ```openscad file=models/gear.scad run``` (also bpy, luau, verse,
+ue-python, plan). The app saves and runs it for you. Big structures (levels, obbies,
+islands) are JSON plans: ```plan file=plans/name.json run```. The ACTIVE SKILL below
+has the exact format.
 Small jobs (one script, one model, one app action): do them yourself, right away.
 Big jobs (many files): spawn_subagent ONE worker at a time with a full brief (goal,
 exact file paths, engine, done-when). Workers are small models that know nothing
@@ -154,8 +164,18 @@ DEFAULT_SUBAGENTS = [
                "layout (src/server/*.server.luau, src/client/*.client.luau, src/shared/*.luau) "
                "as the brief asks. Server owns truth; validate every remote.",
      "model": DOLPHIN, "skills": ["roblox-studio"], "vm": None},
+    {"id": "openscad", "name": "openscad",
+     "desc": "CAD modeler — parametric OpenSCAD parts (game props, 3D prints)",
+     "system": "You are OPENSCAD, a CAD modeler. Write ONE parametric .scad file per brief, "
+               "millimeters, sizes as variables at the top, low-poly ($fn 24-48).",
+     "model": DOLPHIN, "skills": ["openscad-cad"], "vm": None},
+    {"id": "fortnite", "name": "fortnite",
+     "desc": "Fortnite / UEFN map maker — island plans and Verse devices",
+     "system": "You are FORTNITE, a UEFN map maker. Write island plans (kind island) and Verse "
+               "creative_device classes exactly as your skill shows. Verse is not Python.",
+     "model": DOLPHIN, "skills": ["fortnite-map-maker"], "vm": None},
 ]
-SPECIALISTS = ("blender", "unreal", "roblox")
+SPECIALISTS = ("blender", "unreal", "roblox", "openscad", "fortnite")
 
 
 PROMPT_FILE = "prompt.md"  # shared standing prompt every agent obeys
@@ -186,8 +206,13 @@ def read_prompt_for(who: str) -> str:
     return "\n".join(picked).strip() or raw
 
 
-def build_system() -> str:
+LEAD_SKILL_BUDGET = 4000   # routed skill text for the lead (it also carries tools + memory)
+
+
+def build_system(task: str = "") -> str:
     base = SYSTEM_PROMPT.format(skills=", ".join(sorted(tools.SKILLS)) or "(none)")
+    for name, body in skill_router.route(task, budget=LEAD_SKILL_BUDGET) if task else []:
+        base += f"\n\n# ACTIVE SKILL: {name} (follow its rules and output format exactly)\n{body}"
     p = read_prompt()
     if p:
         base += ("\n\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
@@ -195,6 +220,28 @@ def build_system() -> str:
     base += "\n\n# MEMORY (persistent — what you learned before)\n" + (
         mem[-tools.MEMORY_BUDGET:] if mem else "(empty)")
     return base
+
+
+# The lead's app-tool menu follows the task's domain: a 3B model picks far better
+# from 8 relevant tools than from 22. No domain detected -> one main tool per engine.
+DOMAIN_TOOLS = {
+    "openscad": ["openscad_render"],
+    "blender": ["blender_run", "blender_open"],
+    "unreal": ["unreal_quick_level", "unreal_new_project", "unreal_run_python", "unreal_open",
+               "unreal_uat", "run_plan", "terrain_heightmap"],
+    "fortnite": ["run_plan", "verse_check", "terrain_heightmap", "uefn_list", "uefn_open"],
+    "roblox": ["run_plan", "roblox_open", "luau_check", "rojo", "roblox_test"],
+}
+CORE_APP_TOOLS = ["app_status", "app_control", "open_url", "fetch_docs"]
+GENERAL_APP_TOOLS = ["blender_run", "openscad_render", "unreal_quick_level", "run_plan",
+                     "roblox_open", "uefn_open"]
+
+
+def lead_app_tools(task: str) -> list:
+    dom = skill_router.domain_of(task) if task else ""
+    want = CORE_APP_TOOLS + DOMAIN_TOOLS.get(dom, GENERAL_APP_TOOLS)
+    by_name = {x["function"]["name"]: x for x in apps.SCHEMAS}
+    return [by_name[n] for n in dict.fromkeys(want) if n in by_name]
 
 
 def compact_memory(client, model: str) -> None:
@@ -315,7 +362,8 @@ def api_apps_launch():
     b = request.get_json(force=True) or {}
     fn = {"blender": lambda: apps.blender_open(b.get("file", "")),
           "unreal": lambda: apps.unreal_open(b.get("file", "")),
-          "roblox": lambda: apps.roblox_open(b.get("file", ""))}.get(b.get("app"))
+          "roblox": lambda: apps.roblox_open(b.get("file", "")),
+          "uefn": lambda: engines.uefn_open(b.get("file", ""))}.get(b.get("app"))
     if not fn:
         return jsonify({"ok": False, "error": "unknown app"}), 400
     try:
@@ -1103,8 +1151,23 @@ def _auto_checks(files: list) -> list:
                                                        " — Unreal script: unreal_run_python it"
                                                        if "import unreal" in src else ""))
             elif ext in (".json", ".uproject", ".uplugin"):
-                json.loads(src)
-                out.append(f"{rel}: OK (valid JSON)")
+                data = json.loads(src)
+                if isinstance(data, dict) and "kind" in data:
+                    errs = engines.validate_plan(data)
+                    out.append(f"{rel}: " + (f"OK plan ({data['kind']}) — run_plan('{rel}')" if not errs
+                                             else "PLAN PROBLEMS: " + "; ".join(errs)))
+                else:
+                    out.append(f"{rel}: OK (valid JSON)")
+            elif ext == ".scad":
+                if apps.app_path("openscad"):
+                    r = engines.openscad_render(rel, png=False)
+                    out.append(f"{rel}: " + " | ".join(r.splitlines()[1:4]))
+                else:
+                    out.append(f"{rel}: not compiled (install OpenSCAD)")
+            elif ext == ".verse":
+                issues = engines.verse_lint(src)
+                out.append(f"{rel}: " + ("OK offline (UEFN compiles it)" if not issues
+                                         else "VERSE ISSUES: " + "; ".join(issues[:6])))
             elif ext in (".js", ".mjs", ".cjs") and shutil.which("node"):
                 r = subprocess.run(["node", "--check", str(p)], capture_output=True, text=True, timeout=30)
                 out.append(f"{rel}: " + ("OK (node --check)" if r.returncode == 0
@@ -1128,14 +1191,14 @@ def _auto_checks(files: list) -> list:
 def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=None) -> str:
     who = sub.get("name", "subagent")
     sys_lines = [sub.get("system") or "You are a focused helper subagent. Be terse.",
-                 "You were booted fresh for ONE job. Write the files the brief asks for with "
-                 "write_file (complete files, no placeholders), then reply with a short result: "
-                 "what you did, files written, anything unfinished. MAIN runs and debugs your "
-                 "work after you. More skills: load_skill(name)."]
-    for name in sub.get("skills", []):              # preload only its assigned skills
-        s = tools.SKILLS.get(name)
-        if s:
-            sys_lines.append(f"\n# skill: {name}\n{s['body']}")
+                 "You were booted fresh for ONE job. Write each file the brief asks for as a "
+                 "fenced block that starts with its language and path, e.g. "
+                 "```openscad file=models/gear.scad``` — complete files, no placeholders. "
+                 "Then one short line: what you made and anything unfinished. MAIN runs and "
+                 "debugs your work after you."]
+    # dynamic skill loader: the skills that match THIS brief, then the agent's own
+    for name, body in skill_router.route(task, assigned=sub.get("skills", [])):
+        sys_lines.append(f"\n# skill: {name}\n{body}")
     msgs = [{"role": "system", "content": "\n".join(sys_lines)},
             {"role": "user", "content": task}]
     model, note = worker_model_for(client, sub, default_model)
@@ -1184,8 +1247,16 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
             msgs.append({"role": "tool", "content": r})
     else:
         acc = (acc + "\n(hit the step limit)").strip()
+    for b in exec_tags.blocks(acc):                 # files written as execution-tag blocks
+        try:
+            tools.write_file(b["file"], b["code"])
+            if b["file"] not in touched:
+                touched.append(b["file"])
+            log.append(f"block→{b['file']}")
+        except Exception as e:
+            log.append(f"block {b['file']} failed: {e}")
     report = [f"[{who} finished — fresh boot on {model}] {note}".rstrip(),
-              acc.strip() or "(no summary)"]
+              exec_tags.summarize(acc).strip() or "(no summary)"]
     if touched:
         report.append("FILES: " + ", ".join(touched))
         report.append("AUTO-CHECKS:\n" + "\n".join("- " + c for c in _auto_checks(touched)))
@@ -1494,7 +1565,10 @@ def api_chat():
             yield sse("done", {})
             return
         client = ollama.Client()
-        msgs = [{"role": "system", "content": build_system()}] + history
+        # what the user is asking for right now (last two user turns, for follow-ups)
+        asks = [m.get("content", "") for m in history if m.get("role") == "user"][-2:]
+        task_text = "\n".join(a for a in asks if isinstance(a, str))
+        msgs = [{"role": "system", "content": build_system(task_text)}] + history
 
         subs = load_subagents()
         import connectors as C
@@ -1502,7 +1576,7 @@ def api_chat():
         mcp_schemas, mcp_index = C.list_tools(chat_connectors(active)) if active else ([], {})
         schemas = None
         if tool_mode:
-            schemas = list(tools.SCHEMAS) + apps.SCHEMAS + mcp_schemas
+            schemas = list(tools.SCHEMAS) + lead_app_tools(task_text) + mcp_schemas
             if use_web:
                 schemas = schemas + web.SCHEMAS
             if subs:
@@ -1545,6 +1619,14 @@ def api_chat():
                     for tc in (msg.get("tool_calls") or []):
                         calls.append(tc)
 
+                if not calls and schemas and acc.strip():
+                    # code the model wrote as execution-tag blocks -> write (+ run) it
+                    tagged = exec_tags.to_calls(acc, set(apps.REGISTRY) | {"write_file"})
+                    if tagged:
+                        if acc[sent:]:
+                            yield sse("token", acc[sent:])
+                        sent = len(acc)
+                        calls = tagged
                 if not calls and schemas and acc.strip():
                     known = {x["function"]["name"] for x in schemas}
                     found, rest = toolcalls.extract_calls(acc, known)

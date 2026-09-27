@@ -302,3 +302,6 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 - toolcalls.py: text tool calls executed + hidden; invented tools corrected; lead tool menu trimmed (~37 -> 26), prompt 7.5k -> 2.5k chars, "do it, never explain how".
 - New tools: app_control (open/close/restart any app), open_url, unreal_quick_level (new BP project from template + level + opens editor), blender_run inline code/save_as/open_after.
 - Recommend a tool-capable lead: qwen3:4b (low RAM) or hermes3:8b; llama3.2:3b is weak at tool use.
+
+## PIVOT 25 — engine bridge (OpenSCAD, UE5, UEFN/Verse, Roblox)
+- skill_router (domain skills by triggers, budgets), exec_tags (fenced blocks -> write/run), engines.py (openscad render, verse lint, uefn, heightmaps+scatter, island/obby/ue_layout plans, rbxlx), nightcrew_cli.py, 4 new skills, openscad/fortnite workers, domain-filtered lead tools. docs/ENGINE_BRIDGE.md.

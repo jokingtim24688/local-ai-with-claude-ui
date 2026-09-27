@@ -37,6 +37,11 @@ make_shortcut.py  one-time: Desktop/Start-menu shortcut (Win) or Night Crew.app 
 desktop.py     app entry: ensure_ollama(), free port, Flask thread, pywebview window
 app.py         Flask backend: chat SSE + agent tool-loop, all /api/* routes
 toolcalls.py   recovers tool calls small models TYPE as JSON text; hides that JSON
+skill_router.py dynamic skill loader: frontmatter `domain`/`triggers` -> routed skills
+exec_tags.py   ```<lang> file=<path> run``` blocks -> write_file + engine step
+engines.py     OpenSCAD, UEFN/Verse (lint, islands), terrain heightmaps + scatter,
+               Roblox .rbxlx/obby, UE5 templates + layout plans, run_plan
+nightcrew_cli.py  every engine step as a terminal command (--workspace for VMs)
 tools.py       tool registry + SANDBOX jail (file ops confined to the workdir)
 apps.py        Blender / Unreal / Roblox Studio / Rojo / luau: detection (win+mac),
                tools (blender_run, unreal_run_python, unreal_uat, roblox_open, rojo,
@@ -73,6 +78,10 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   back text that starts like a call (or a mid-answer `{"name":`), runs it via
   toolcalls.extract_calls, and nudges the model when it invents a tool. The lead's tool
   menu is deliberately lean (no bus/task/avatar tools) and its prompt short.
+- **Engine bridge** (docs/ENGINE_BRIDGE.md): 3B models answer with execution tags or JSON
+  plans (kinds ue_layout/obby/island/terrain) instead of big API code; the lead's prompt
+  gets the routed `# ACTIVE SKILL` and a tool menu filtered to that domain
+  (`lead_app_tools`). Skill templates are verified (OpenSCAD compiles, Verse lints clean).
 - App tools (Blender/Unreal/Roblox) are **MAIN-only**; the ones that run code or launch
   programs need approval unless Auto is on. Paths: sandbox + user-registered project
   folders (`apps.json`) only. `num_ctx` 8192 for MAIN and workers.

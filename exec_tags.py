@@ -27,7 +27,8 @@ import re
 import shlex
 import time
 
-FENCE = re.compile(r"```[ \t]*([A-Za-z][\w+.-]*)([^\n]*)\n(.*?)(?:\n```|$)", re.S)
+# fences start a line; a block may be empty; an unclosed block (streaming) runs to the end
+FENCE = re.compile(r"^[ \t]*```[ \t]*([A-Za-z][\w+.-]*)([^\n]*)\n(.*?)(?:^[ \t]*```[ \t]*$|\Z)", re.S | re.M)
 EXT = {"openscad": "scad", "scad": "scad", "bpy": "py", "blender": "py", "ue-python": "py",
        "unreal-python": "py", "luau": "luau", "lua": "lua", "verse": "verse", "plan": "json",
        "json": "json", "cpp": "cpp", "python": "py"}
@@ -58,6 +59,8 @@ def blocks(text: str) -> list:
         if not a.get("file") and not a.get("run"):
             continue
         f = a.get("file") if isinstance(a.get("file"), str) else ""
+        if "<" in f or not m.group(3).strip():            # format placeholder / empty block
+            continue
         if not f:
             f = f"drafts/nc_{int(time.time())}_{i}.{EXT.get(lang, 'txt')}"
         found.append({"lang": lang, "file": f.replace("\\", "/"), "run": bool(a.get("run")),
@@ -96,3 +99,12 @@ def to_calls(text: str, known: set) -> list:
             if c and c["function"]["name"] in known:
                 calls.append(c)
     return calls
+
+
+def summarize(text: str) -> str:
+    """Replace written blocks with a one-line marker (keeps a small lead's context lean)."""
+    def sub(m):
+        a = _attrs(m.group(2))
+        f = a.get("file")
+        return f"[wrote {f}]" if isinstance(f, str) and f and "<" not in f else m.group(0)
+    return FENCE.sub(sub, text)
