@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -234,15 +235,36 @@ def app_status() -> str:
     return "\n".join(rows)
 
 
-def blender_run(script: str, blend: str = "", args=None, timeout: int = 900) -> str:
-    """Run a bpy script headless. Exit code != 0 when the script raises."""
+def blender_run(script: str = "", blend: str = "", args=None, timeout: int = 900,
+                code: str = "", save_as: str = "", open_after: bool = False) -> str:
+    """Run a bpy script headless (a sandbox file, or inline `code`). Optional: save the
+    result as a .blend (`save_as`) and open it in Blender's window (`open_after`)."""
     exe = _need("blender")
+    if code:
+        rel = f"scripts/nc_blender_{int(time.time())}.py"
+        tools.write_file(rel, code)
+        script = rel
+    if not script:
+        raise tools.ToolError("give `script` (a .py in the sandbox) or `code`")
+    run = resolve(script)
+    if save_as:                                   # wrap: run the script, then save
+        out = str(tools._jail(save_as)) if not os.path.isabs(save_as) else resolve(save_as, must_exist=False)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        wrap = f"scripts/nc_wrap_{int(time.time())}.py"
+        tools.write_file(wrap, f"import bpy, runpy\nrunpy.run_path({run!r}, run_name='__main__')\n"
+                               f"bpy.ops.wm.save_as_mainfile(filepath={out!r})\nprint('NC_SAVED', {out!r})\n")
+        run = resolve(wrap)
     cmd = [exe, "-b"] + ([resolve(blend)] if blend else []) + \
-          ["--python-exit-code", "1", "--python", resolve(script), "--"] + [str(a) for a in (args or [])]
-    code, out = _run(cmd, timeout)
-    # drop Blender's startup banner noise, keep the useful tail
-    keep = [l for l in out.splitlines() if not l.startswith(("Read prefs", "Blender quit"))]
-    return f"exit={code}\n" + _tail("\n".join(keep))
+          ["--python-exit-code", "1", "--python", run, "--"] + [str(a) for a in (args or [])]
+    code_, out_ = _run(cmd, timeout)
+    keep = [l for l in out_.splitlines() if not l.startswith(("Read prefs", "Blender quit"))]
+    result = f"exit={code_}\n" + _tail("\n".join(keep))
+    if code_ == 0 and save_as and open_after:
+        try:
+            result += "\n" + blender_open(save_as)
+        except Exception as e:
+            result += f"\n(couldn't open it in Blender: {e})"
+    return result
 
 
 def blender_open(blend: str = "") -> str:
@@ -442,6 +464,194 @@ def prefetch_docs(app: str = "") -> dict:
     return {"ok": ok, "failed": failed}
 
 
+# ---- desktop apps + websites ------------------------------------------------
+# app_control opens / closes / restarts ANY installed app by name. Windows looks the
+# name up in the Start menu (Get-StartApps covers Store apps like Spotify too);
+# macOS uses `open -a` / AppleScript quit.
+
+SITES = {"google": "https://www.google.com", "youtube": "https://www.youtube.com",
+         "gmail": "https://mail.google.com", "github": "https://github.com",
+         "roblox": "https://www.roblox.com/create", "chatgpt": "https://chatgpt.com"}
+PROTECTED = {"explorer", "system", "svchost", "winlogon", "csrss", "lsass", "services", "dwm",
+             "python", "pythonw", "ollama", "night crew", "nightcrew", "finder", "loginwindow",
+             "windowserver", "kernel_task", "launchd"}
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
+def open_url(url: str) -> str:
+    import webbrowser
+    url = url.strip()
+    if not re.match(r"^https?://", url):
+        url = "https://" + url
+    webbrowser.open(url)
+    return f"OK: opened {url} in your browser"
+
+
+def _win_open(name: str) -> str | None:
+    q = name.replace("'", "''")
+    ps = ("$a = Get-StartApps | Where-Object { $_.Name -like '*" + q + "*' } | "
+          "Sort-Object { $_.Name.Length } | Select-Object -First 1; "
+          "if ($a) { Start-Process ('shell:AppsFolder\\' + $a.AppID); $a.Name }")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True,
+                       timeout=30, creationflags=0x08000000)
+    found = (r.stdout or "").strip()
+    if found:
+        return found
+    try:                                         # App Paths (chrome, msedge, excel, ...)
+        subprocess.run(["cmd", "/c", "start", "", name], check=True, timeout=15,
+                       capture_output=True, creationflags=0x08000000)
+        return name
+    except Exception:
+        return None
+
+
+def _open_app(name: str) -> str:
+    key = _norm(name)
+    if key in ("google", "googlesearch"):
+        return open_url(SITES["google"])
+    if WIN:
+        if key == "spotify":
+            try:
+                os.startfile("spotify:")  # type: ignore[attr-defined]
+                return "OK: opened Spotify"
+            except Exception:
+                pass
+        got = _win_open(name)
+        return f"OK: opened {got}" if got else f"error: couldn't find an app called '{name}' in the Start menu"
+    if MAC:
+        for n in (name, name.title()):
+            if subprocess.run(["open", "-a", n], capture_output=True).returncode == 0:
+                return f"OK: opened {n}"
+        return f"error: no app called '{name}' in Applications"
+    return f"error: opening apps isn't supported on {sys.platform}"
+
+
+def _close_app(name: str) -> str:
+    key = _norm(name)
+    if len(key) < 3 or key in {_norm(p) for p in PROTECTED}:
+        return f"error: won't close '{name}'"
+    if MAC:
+        r = subprocess.run(["osascript", "-e", f'quit app "{name}"'], capture_output=True, text=True)
+        return f"OK: closed {name}" if r.returncode == 0 else f"error: {r.stderr.strip()[:200]}"
+    try:
+        import psutil
+    except Exception:
+        return "error: psutil missing (pip install psutil)"
+    procs = [p for p in psutil.process_iter(["name", "pid"])
+             if key in _norm((p.info.get("name") or "").rsplit(".", 1)[0])
+             and _norm((p.info.get("name") or "").rsplit(".", 1)[0]) not in {_norm(x) for x in PROTECTED}
+             and p.info["pid"] != os.getpid()]
+    if not procs:
+        return f"OK: {name} wasn't running"
+    for p in procs:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    _, alive = psutil.wait_procs(procs, timeout=4)
+    for p in alive:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    return f"OK: closed {name} ({len(procs)} process{'es' if len(procs) != 1 else ''})"
+
+
+def app_control(app: str = "", action: str = "open", command: str = "") -> str:
+    """Open / close / restart a desktop app by name (e.g. Spotify, Chrome, Discord)."""
+    action = (command or action or "open").lower().strip()
+    if not app:
+        return "error: which app?"
+    if action in ("close", "quit", "kill", "stop"):
+        return _close_app(app)
+    if action in ("restart", "reopen", "relaunch"):
+        first = _close_app(app)
+        time.sleep(2)
+        return first + "; " + _open_app(app)
+    return _open_app(app)
+
+
+# ---- Unreal: a playable simple level in one step ------------------------------
+
+QUICK_LEVEL_PY = """import unreal
+les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
+eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+path = "/Game/Maps/{name}"
+if unreal.EditorAssetLibrary.does_asset_exist(path):
+    les.load_level(path)
+else:
+    les.new_level(path)
+floor = eas.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(0, 0, 0))
+floor.static_mesh_component.set_static_mesh(unreal.EditorAssetLibrary.load_asset("/Engine/BasicShapes/Plane"))
+floor.set_actor_scale3d(unreal.Vector(40, 40, 1))
+floor.set_actor_label("Floor")
+sun = eas.spawn_actor_from_class(unreal.DirectionalLight, unreal.Vector(0, 0, 800),
+                                 unreal.Rotator(roll=0.0, pitch=-40.0, yaw=30.0))
+sun.set_actor_label("Sun")
+for cls in (unreal.SkyAtmosphere, unreal.SkyLight, unreal.ExponentialHeightFog):
+    eas.spawn_actor_from_class(cls, unreal.Vector(0, 0, 0))
+eas.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(0, 0, 120))
+les.save_current_level()
+unreal.log("NC_LEVEL_OK")
+"""
+
+
+def _new_ue_project(name: str) -> str:
+    ed = _need("unreal")
+    root = ed.split(os.sep + "Engine" + os.sep)[0]
+    tpl = next((os.path.join(root, "Templates", t) for t in ("TP_BlankBP", "TP_Blank")
+                if os.path.isdir(os.path.join(root, "Templates", t))), None)
+    if not tpl:
+        raise tools.ToolError(f"no blank project template under {root}\\Templates")
+    dest = str(tools._jail(f"unreal/{name}"))
+    if not os.path.isdir(dest):
+        shutil.copytree(tpl, dest, ignore=shutil.ignore_patterns("Saved", "Intermediate", "Binaries", "DerivedDataCache"))
+        old = next(f for f in os.listdir(dest) if f.endswith(".uproject"))
+        os.rename(os.path.join(dest, old), os.path.join(dest, f"{name}.uproject"))
+    up = os.path.join(dest, f"{name}.uproject")
+    with open(up, encoding="utf-8") as f:
+        data = json.load(f)
+    plugins = data.setdefault("Plugins", [])
+    for pl in ("PythonScriptPlugin", "EditorScriptingUtilities"):
+        if not any(x.get("Name") == pl for x in plugins):
+            plugins.append({"Name": pl, "Enabled": True})
+    with open(up, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent="\t")
+    return up
+
+
+def unreal_quick_level(name: str = "SimpleLevel", project: str = "") -> str:
+    """Make a simple playable level (floor, sun, sky, fog, player start). With no
+    `project`, creates a new blank Blueprint project in the sandbox first. Then opens
+    it in the Unreal Editor."""
+    name = re.sub(r"[^A-Za-z0-9_]", "", name) or "SimpleLevel"
+    up = resolve(project) if project else _new_ue_project(name + "Project")
+    script = f"scripts/nc_level_{name}.py"
+    tools.write_file(script, QUICK_LEVEL_PY.replace("{name}", name))
+    res = unreal_run_python(script, up)
+    if "NC_LEVEL_OK" not in res:
+        return "error: the level script didn't finish:\n" + res
+    ini = os.path.join(os.path.dirname(up), "Config", "DefaultEngine.ini")
+    try:                                          # open straight into the new level
+        txt = open(ini, encoding="utf-8").read() if os.path.isfile(ini) else ""
+        m = f"/Game/Maps/{name}.{name}"
+        sec = "[/Script/EngineSettings.GameMapsSettings]"
+        if sec not in txt:
+            txt = txt.rstrip() + f"\n\n{sec}\n"
+        for k in ("EditorStartupMap", "GameDefaultMap"):
+            if re.search(rf"^{k}=", txt, re.M):
+                txt = re.sub(rf"^{k}=.*$", f"{k}={m}", txt, flags=re.M)
+            else:
+                txt = txt.replace(sec, f"{sec}\n{k}={m}", 1)
+        open(ini, "w", encoding="utf-8").write(txt)
+    except Exception:
+        pass
+    return f"OK: level /Game/Maps/{name} saved in {up}\n" + unreal_open(up)
+
+
 # ---- registry (MAIN only; subagents write, MAIN runs + debugs) --------------
 
 REGISTRY = {
@@ -456,10 +666,13 @@ REGISTRY = {
     "luau_check": luau_check,
     "fetch_docs": fetch_docs,
     "docs_index": docs_index,
+    "app_control": app_control,
+    "open_url": open_url,
+    "unreal_quick_level": unreal_quick_level,
 }
 # run code or launch programs -> approval unless Auto is on
 GATED = {"blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
-         "roblox_open", "rojo"}
+         "roblox_open", "rojo", "app_control", "unreal_quick_level"}
 
 
 def _fn(name, desc, props=None, req=None):
@@ -472,9 +685,11 @@ _S = {"type": "string"}
 SCHEMAS = [
     _fn("app_status", "Which of Blender / Unreal Engine / Roblox Studio / Rojo / luau-analyze are "
         "installed (paths) and which project folders you may touch."),
-    _fn("blender_run", "Run a Blender Python (bpy) script headless: blender -b [blend] --python script. "
-        "Use to build/modify 3D models and export .glb/.fbx/.obj. exit!=0 means the script raised.",
-        {"script": _S, "blend": _S, "args": {"type": "array", "items": _S}}, ["script"]),
+    _fn("blender_run", "Run Blender Python headless: pass inline `code` (bpy) or a sandbox `script`. "
+        "save_as='models/x.blend' saves the result; open_after=true then shows it in Blender. "
+        "Use for any 3D model. exit!=0 means the script raised.",
+        {"code": _S, "script": _S, "save_as": _S, "open_after": {"type": "boolean"}, "blend": _S,
+         "args": {"type": "array", "items": _S}}),
     _fn("blender_open", "Open Blender's window (optionally with a .blend) for the user.", {"blend": _S}),
     _fn("unreal_run_python", "Run an Unreal Editor Python script headless on a .uproject "
         "(-run=pythonscript). Needs the Python Editor Script Plugin enabled in that project.",
@@ -489,6 +704,14 @@ SCHEMAS = [
         {"args": _S}, ["args"]),
     _fn("luau_check", "Static-check Roblox Luau code (file or folder) with luau-analyze / selene.",
         {"path": _S}, ["path"]),
+    _fn("app_control", "Open, close or restart ANY app on the user's computer by name "
+        "(Spotify, Chrome, Discord, Steam, Blender...). action: open | close | restart.",
+        {"app": _S, "action": _S}, ["app"]),
+    _fn("open_url", "Open a website in the user's browser (google.com, youtube.com, ...).",
+        {"url": _S}, ["url"]),
+    _fn("unreal_quick_level", "Make a simple playable Unreal level in one step (floor, sun, sky, "
+        "player start) and open it in the editor. No project given = creates a new one.",
+        {"name": _S, "project": _S}),
     _fn("fetch_docs", "Read an OFFICIAL docs page for blender / unreal / roblox (cached for offline). "
         "page = a key from docs_index or a full official docs URL.",
         {"app": _S, "page": _S}, ["app", "page"]),

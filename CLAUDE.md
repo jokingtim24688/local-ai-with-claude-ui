@@ -36,10 +36,12 @@ launcher.py    auto-update (git ff + safe stash) then start desktop.py
 make_shortcut.py  one-time: Desktop/Start-menu shortcut (Win) or Night Crew.app (mac)
 desktop.py     app entry: ensure_ollama(), free port, Flask thread, pywebview window
 app.py         Flask backend: chat SSE + agent tool-loop, all /api/* routes
+toolcalls.py   recovers tool calls small models TYPE as JSON text; hides that JSON
 tools.py       tool registry + SANDBOX jail (file ops confined to the workdir)
 apps.py        Blender / Unreal / Roblox Studio / Rojo / luau: detection (win+mac),
                tools (blender_run, unreal_run_python, unreal_uat, roblox_open, rojo,
-               luau_check, fetch_docs, docs_index), official-docs index + disk cache
+               luau_check, fetch_docs, docs_index, app_control, open_url,
+               unreal_quick_level; blender_run takes inline code + save_as/open_after)
 web.py         web_search / web_fetch (only on /web turns)
 connectors.py  MCP client bridge (mcp SDK, fail-closed)
 paths.py       bundled-resource (RES_DIR) vs writable NightCrew-data (DATA_DIR);
@@ -67,6 +69,10 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   `keep_alive=0`). They see role + assigned skills + MAIN's brief only, one at a time
   (`SUB_LOCK`). Their result comes back with FILES + offline AUTO-CHECKS (py compile,
   JSON, node --check, luau lint) and a "debug now" handoff; MAIN runs and fixes.
+- Small leads (llama3.2:3b etc.) often write tool calls as text: the chat loop holds
+  back text that starts like a call (or a mid-answer `{"name":`), runs it via
+  toolcalls.extract_calls, and nudges the model when it invents a tool. The lead's tool
+  menu is deliberately lean (no bus/task/avatar tools) and its prompt short.
 - App tools (Blender/Unreal/Roblox) are **MAIN-only**; the ones that run code or launch
   programs need approval unless Auto is on. Paths: sandbox + user-registered project
   folders (`apps.json`) only. `num_ctx` 8192 for MAIN and workers.

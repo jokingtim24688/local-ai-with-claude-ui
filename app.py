@@ -15,6 +15,7 @@ import uuid
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 import tools
+import toolcalls
 import web
 import paths
 import apps
@@ -44,38 +45,30 @@ CFG = {"workdir": paths.data("workspace"), "skills": paths.data("skills")}
 # pending tool approvals: id -> {"event": Event, "allow": bool}
 PENDING: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are MAIN — the resident lead. You PLAN and DEBUG. Low-power worker
-subagents WRITE the first drafts (code, scripts, 3D models as Blender scripts).
-- MEMORY: the MEMORY block below is what you learned before. Trust it. When you
-  learn something worth keeping (user preference, decision, project state, path),
-  call remember("key: value") — one short fact, no filler. Same key overwrites.
-- WORKFLOW: 1) split the job into small pieces. 2) give each piece to ONE worker with
-  spawn_subagent and a FULL brief: goal, exact file paths, language/engine,
-  constraints, done-when. Workers are small models booted fresh; they know nothing
-  else. 3) when a worker returns, DEBUG: read the files it wrote, run them
-  (run_command, blender_run, unreal_run_python, luau_check, rojo), fix bugs yourself
-  with edit_file, re-run until clean. 4) next piece. One worker at a time.
-- Workers: code -> "buddy", 3D models (bpy scripts that build + export .glb/.fbx)
-  -> "blender", Unreal Engine (editor Python, C++) -> "unreal", Roblox (Luau, Rojo)
-  -> "roblox", tests -> "tester", review -> "reviewer", specs -> "designer",
-  research -> "researcher", Windows/macOS porting -> "porter".
-- APPS: call app_status before driving Blender / Unreal / Roblox Studio. New files
-  go in the sandbox; existing projects only in folders the user registered.
-  Official docs: docs_index + fetch_docs, or load_skill("blender-python" |
-  "unreal-engine" | "roblox-studio"). Put the relevant docs facts in the brief.
-- If a worker keeps failing the same way, create_skill what it lacks ONCE,
-  grant_skill it to the pool, and re-brief. Affirm good work.
-- Track multi-step work on the task board (add_task / list_tasks).
-- WATCH THE MACHINE: get_system_load if things feel slow.
-All agents share one sandbox and the full skill library.
+SYSTEM_PROMPT = """You are the LEAD of Night Crew, running on the user's own computer with
+REAL tools. Never tell the user how to do something you can do with a tool — do it.
+Call tools through the tool-calling interface, never by typing JSON in your reply.
+
+Which tool:
+- open / close / restart an app ("open Spotify", "restart Discord") -> app_control
+- open a website ("open google") -> open_url
+- anything 3D in Blender ("make a cube", "a low-poly tree") -> blender_run with inline
+  bpy `code`, save_as="models/<name>.blend", open_after=true
+- a simple / blank Unreal level -> unreal_quick_level; other Unreal work ->
+  unreal_run_python (editor Python) on a project
+- Roblox -> write Luau files (Rojo layout), luau_check, rojo, roblox_open
+- files and commands in the workspace -> read_file / write_file / edit_file / run_command
+- check what's installed -> app_status
+Small jobs (one script, one model, one app action): do them yourself, right away.
+Big jobs (many files): spawn_subagent ONE worker at a time with a full brief (goal,
+exact file paths, engine, done-when). Workers are small models that know nothing
+else; when one returns, run its files and fix what's broken yourself.
+MEMORY below is what you learned before. Save new facts with remember("key: value").
 Rules:
-- Be blunt and terse. No filler, no lecturing, no "as an AI".
-- You have real tools. An action counts as done ONLY when a tool returns OK.
-- Never claim you saved, ran, edited, or found something unless a tool result says so.
-- All file paths are relative to the work directory; you cannot escape it.
-- Web tools exist only on turns the user started with /web.
-Skills available (load full body with load_skill):
-{skills}
+- Be brief. An action is done ONLY when a tool result says OK.
+- Paths are relative to the workspace folder.
+- Web search exists only on turns the user started with /web.
+Skills you can load with load_skill(name): {skills}
 """
 
 def _settings_path() -> str:
@@ -194,8 +187,7 @@ def read_prompt_for(who: str) -> str:
 
 
 def build_system() -> str:
-    lines = [f"- {n}: {s['desc']}" for n, s in tools.SKILLS.items()]
-    base = SYSTEM_PROMPT.format(skills="\n".join(lines) or "(none)")
+    base = SYSTEM_PROMPT.format(skills=", ".join(sorted(tools.SKILLS)) or "(none)")
     p = read_prompt()
     if p:
         base += ("\n\n# STANDING PROMPT (prompt.md — always follow this)\n" + p)
@@ -1162,6 +1154,10 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
             m = chunk.get("message", {})
             acc += m.get("content") or ""
             calls += m.get("tool_calls") or []
+        if not calls and acc.strip():
+            calls, rest = toolcalls.extract_calls(acc, {x["function"]["name"] for x in schemas})
+            if calls:
+                acc = rest
         msgs.append({"role": "assistant", "content": acc, "tool_calls": calls or None})
         if not calls:
             break
@@ -1511,17 +1507,22 @@ def api_chat():
                 schemas = schemas + web.SCHEMAS
             if subs:
                 names = ", ".join(s["name"] for s in subs)
-                schemas = schemas + BUS_SCHEMAS + TASK_SCHEMAS + SKILL_SCHEMAS + SYS_SCHEMAS + [{"type": "function", "function": {
+                # lean on purpose: small leads pick the wrong tool when the menu is long
+                grant = [x for x in SYS_SCHEMAS if x["function"]["name"] == "grant_skill"]
+                schemas = schemas + SKILL_SCHEMAS + grant + [{"type": "function", "function": {
                     "name": "spawn_subagent",
                     "description": f"Boot a low-power worker FRESH to write one piece; you get its result, the files it wrote and auto-check output, then YOU debug. It knows nothing else, so `task` must be a full brief (goal, exact file paths, engine/language, constraints, done-when). One at a time. Available: {names}.",
                     "parameters": {"type": "object", "properties": {
                         "name": {"type": "string"}, "task": {"type": "string"}},
                         "required": ["name", "task"]}}}]
 
+        retries = 0
         try:
             for _ in range(12):  # tool-loop cap
                 acc = ""
                 calls = []
+                held = None            # None = undecided, True = looks like a text tool call
+                sent = 0               # chars of acc already streamed to the UI
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
                                     options={"num_ctx": CTX}, tools=schemas, stream=True)
                 for chunk in resp:
@@ -1529,9 +1530,42 @@ def api_chat():
                     piece = msg.get("content") or ""
                     if piece:
                         acc += piece
-                        yield sse("token", piece)
+                        # small models often "call" tools by typing JSON; hold that back
+                        # instead of printing it, then run it as a real call below
+                        if held is None and acc.strip():
+                            held = toolcalls.looks_like_call(acc)     # None = can't tell yet
+                        if held is False:
+                            # prose first, then a JSON "call"? stop streaming where it starts
+                            end = toolcalls.safe_prefix(acc, sent)
+                            if end > sent:
+                                yield sse("token", acc[sent:end])
+                                sent = end
+                            if end < len(acc) and toolcalls.CALL_START.search(acc, sent):
+                                held = True
                     for tc in (msg.get("tool_calls") or []):
                         calls.append(tc)
+
+                if not calls and schemas and acc.strip():
+                    known = {x["function"]["name"] for x in schemas}
+                    found, rest = toolcalls.extract_calls(acc, known)
+                    if found:
+                        calls = found
+                        if rest[sent:]:                      # prose around the JSON
+                            yield sse("token", rest[sent:])
+                        acc = rest
+                    elif held is not False and toolcalls.invented_call(acc) and retries < 2:
+                        # it "called" a tool that doesn't exist: tell it, don't show the JSON
+                        retries += 1
+                        msgs.append({"role": "assistant", "content": acc})
+                        msgs.append({"role": "user", "content":
+                                     f"(system) '{toolcalls.invented_call(acc)}' is not a tool. Either "
+                                     "use one of your real tools through tool calling, or just answer "
+                                     "me in plain words."})
+                        continue
+                    elif held is not False:                  # it wasn't a call after all
+                        yield sse("token", acc[sent:])
+                elif held is not False and acc[sent:]:
+                    yield sse("token", acc[sent:])
 
                 msgs.append({"role": "assistant", "content": acc,
                              "tool_calls": calls or None})
@@ -1573,13 +1607,19 @@ def api_chat():
                         if sub and not sub.get("enabled", True):
                             result = f"error: '{sub['name']}' is disabled (freed for resources)"
                         else:
-                            result = (run_subagent(client, model, sub, args.get("task", ""), active)
+                            task = args.get("task", "")
+                            if not isinstance(task, str):            # small models send an object
+                                task = json.dumps(task, indent=1)
+                            result = (run_subagent(client, model, sub, task, active)
                                       if sub else f"error: no subagent '{args.get('name')}'")
                     elif name in apps.REGISTRY:
                         result = apps.run_tool(name, args)
                     elif name in web.REGISTRY:
                         result = web.run_web_tool(name, args) if use_web \
                             else "error: web tools disabled this turn"
+                    elif schemas and name not in {x["function"]["name"] for x in schemas}:
+                        result = (f"error: there is no tool '{name}'. Use one of: " +
+                                  ", ".join(sorted(x["function"]["name"] for x in schemas)))
                     else:
                         result = tools.run_tool(name, args)
 

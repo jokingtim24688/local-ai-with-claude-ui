@@ -297,3 +297,8 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 
 ## PIVOT 23 — auto-updating shortcut
 - launcher.py (update then launch, tiny splash, safe stash), make_shortcut.py (Win .lnk w/ icon on Desktop+Start, mac ~/Applications app), update toast in app.
+
+## PIVOT 24 — the lead actually does things
+- toolcalls.py: text tool calls executed + hidden; invented tools corrected; lead tool menu trimmed (~37 -> 26), prompt 7.5k -> 2.5k chars, "do it, never explain how".
+- New tools: app_control (open/close/restart any app), open_url, unreal_quick_level (new BP project from template + level + opens editor), blender_run inline code/save_as/open_after.
+- Recommend a tool-capable lead: qwen3:4b (low RAM) or hermes3:8b; llama3.2:3b is weak at tool use.
