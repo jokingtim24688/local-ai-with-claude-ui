@@ -314,3 +314,6 @@ See CONTINUE_HERE.md redo recipe.
 
 ## PIVOT 28 — Sign in with Google + keychain vault
 See CONTINUE_HERE.md redo recipe.
+
+## PIVOT 29 — our own MCP servers + live app bridges
+5 servers / 60 tools (docs/MCP_SERVERS.md), live Blender+Roblox+Unreal bridges, examples/CrescentIsles built through them. See CONTINUE_HERE.md redo recipe.

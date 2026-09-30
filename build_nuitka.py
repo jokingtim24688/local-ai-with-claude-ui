@@ -26,6 +26,10 @@ DATA = [
     "--include-data-dir=static=static",          # UI + bundled fonts
     "--include-data-dir=assets=assets",
     "--include-data-dir=skills=skills",
+    "--include-data-dir=bridges=bridges",                # Blender add-on + Roblox plugin
+    # Nuitka skips .py inside data dirs; the Blender add-on is data, so list it explicitly
+    "--include-data-files=bridges/blender/nightcrew_bridge.py=bridges/blender/nightcrew_bridge.py",
+    "--include-package=mcp_servers", "--include-module=live",
     "--include-data-files=branding.json=branding.json",
     "--include-package=trafilatura", "--include-package-data=trafilatura",   # scraper
     "--include-package=courlan", "--include-package=htmldate", "--include-package=justext",

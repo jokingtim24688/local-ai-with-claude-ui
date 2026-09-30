@@ -17,6 +17,7 @@ A) A whole island (terrain + props + rules + device checklist) -> a plan:
  "rules":{"mode":"elimination","score_to_win":10}}
 ```
 style: island | hills | flat | canyon. size: 253, 505, 1009. max 6 prop groups, 100 each.
+z_scale (default 12 = ~61 m tall, ~11 m per terrace; 20 = taller cliffs). Import the heightmap with that Z.
 B) Custom game logic -> one Verse device:
 ```verse file=verse/<name>.verse run
 ```

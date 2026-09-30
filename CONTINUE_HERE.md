@@ -1,3 +1,19 @@
+# >>> PIVOT 29 — our own MCP server per app + live bridges — DONE (2026-09-30) <<<
+Redo recipe:
+1. mcp_servers/core.py = tiny stdio JSON-RPC MCP server (no SDK; schemas from the Python signature;
+   returns (text, png) for image content). mcp_servers/{blender,unreal,roblox,openscad,fortnite}.py
+   = 60 tools. `python desktop.py --mcp <name>` runs one (desktop.py checks --mcp before importing app).
+2. live.py = bridges: Blender add-on TCP 9876 (token ~/.nightcrew/bridge.token), Roblox plugin queue
+   HTTP 9877 (X-NC header + token), Unreal Remote Control 30010 (+ unreal_enable_live writes plugins
+   + DefaultRemoteControl.ini). bridges/blender/nightcrew_bridge.py, bridges/roblox/NightCrewBridge.lua.
+3. app.py: startup_bridges() (hosts the Roblox queue, seeds builtin connectors), /api/bridges GET+POST.
+   UI: Customize > Apps > Live control buttons.
+4. Plan tools take `spec` inline (core.plan_arg saves plans/<name>.json); engines._load_plan accepts JSON text.
+   engines.openscad_render(defines=) for -D overrides; island z_scale (default 12) + relative DEVICES.md paths.
+5. examples/CrescentIsles = a full map built through the MCP tools as a test.
+Tested: real MCP client lists 60 tools in 0.7s; Blender/Roblox bridges tested against stand-ins;
+OpenSCAD renders. Unreal live + real Blender/Studio untested (no Windows/engines here).
+
 # >>> PIVOT 28 — Sign in with Google + keychain vault — DONE (2026-09-30) <<<
 Redo recipe:
 1. vault.py: keyring on win32/darwin only (Credential Manager / Keychain), else chmod-600 vault.json.

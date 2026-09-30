@@ -19,6 +19,7 @@ datas = [
     ("assets", "assets"),
     ("branding.json", "."),
     ("skills", "skills"),          # default skills, seeded to user data on first run
+    ("bridges", "bridges"),        # Blender add-on + Roblox Studio plugin (copied into the apps)
 ]
 for _pkg in ("trafilatura", "courlan", "htmldate", "justext", "tld", "certifi"):   # scraper data files
     try:
@@ -30,7 +31,9 @@ hiddenimports = (
     collect_submodules("webview")
     + collect_submodules("flask")
     + ["ollama", "httpx", "trafilatura", "scraper", "integrations", "telegram_bridge",
-       "gmail_listener", "vision", "context", "vault", "google_auth", "keyring"]
+       "gmail_listener", "vision", "context", "vault", "google_auth", "keyring", "live", "mcp_servers", "mcp_servers.core",
+       "mcp_servers.blender", "mcp_servers.unreal", "mcp_servers.roblox", "mcp_servers.openscad",
+       "mcp_servers.fortnite"]
     + collect_submodules("keyring")
     + collect_submodules("trafilatura")
 )

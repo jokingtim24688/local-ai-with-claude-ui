@@ -922,3 +922,19 @@ $("#gm-signin")?.addEventListener("click", async () => {
 $("#gm-signout")?.addEventListener("click", async () => {
   await fetch("/api/google/signout", { method: "POST", headers: { "X-NC": "1" } }); loadIntegrations();
 });
+
+
+/* ---------- live bridges (Blender add-on / Roblox plugin / Unreal Remote Control) ---------- */
+async function loadBridges() {
+  try {
+    const s = await (await fetch("/api/bridges")).json();
+    $("#bridge-state").textContent = Object.entries(s).map(([k, v]) => `${k} ${v ? "● live" : "○"}`).join("  ");
+  } catch {}
+}
+document.querySelectorAll("[data-bridge]").forEach((b) => b.addEventListener("click", async () => {
+  const log = $("#bridge-log"); log.hidden = false; log.textContent = "working…";
+  const r = await (await fetch("/api/bridges", { method: "POST", headers: { "Content-Type": "application/json", "X-NC": "1" },
+    body: JSON.stringify({ app: b.dataset.bridge, project: $("#bridge-ue").value.trim() }) })).json();
+  log.textContent = r.result || r.error; loadBridges();
+}));
+document.querySelector('.tab[data-tab="apps"]')?.addEventListener("click", loadBridges);

@@ -60,6 +60,8 @@ def _out_dir(rel_or_abs: str) -> str:
 def _load_plan(plan) -> dict:
     if isinstance(plan, dict):
         return plan
+    if isinstance(plan, str) and plan.lstrip().startswith("{"):     # inline JSON
+        return json.loads(plan)
     with open(resolve(plan), encoding="utf-8") as f:
         return json.load(f)
 
@@ -94,7 +96,7 @@ def _stl_triangles(path: str) -> int:
 
 
 def openscad_render(file: str = "", code: str = "", out: str = "", png: bool = True,
-                    size: str = "900,700") -> str:
+                    size: str = "900,700", defines: dict | None = None) -> str:
     """Compile a .scad to .stl (and a .png preview). Reports errors, warnings and the
     triangle count (keep game assets low-poly: $fn 24-48)."""
     exe = _need("openscad")
@@ -105,7 +107,8 @@ def openscad_render(file: str = "", code: str = "", out: str = "", png: bool = T
         raise tools.ToolError("give `file` (.scad) or `code`")
     src = resolve(file)
     stl = _out_path(out) if out else os.path.splitext(src)[0] + ".stl"
-    code_, log = _run([exe, "-o", stl, src], 600)
+    dflags = [f"-D{k}={v}" for k, v in (defines or {}).items()]     # parameter overrides
+    code_, log = _run([exe, "-o", stl, *dflags, src], 600)
     issues = [l for l in log.splitlines() if re.search(r"ERROR|WARNING|Parser error", l)]
     ok = code_ == 0 and os.path.isfile(stl) and os.path.getsize(stl) > 0
     lines = [f"exit={code_}", ("OK: " if ok else "FAILED: ") + (stl if ok else "no mesh produced")]
@@ -116,7 +119,7 @@ def openscad_render(file: str = "", code: str = "", out: str = "", png: bool = T
     if ok and png:
         img = os.path.splitext(stl)[0] + ".png"
         pc, plog = _run([exe, "-o", img, f"--imgsize={size}", "--viewall", "--autocenter",
-                         "--colorscheme=Tomorrow Night", src], 300)
+                         "--colorscheme=Tomorrow Night", *dflags, src], 300)
         lines.append(f"preview: {img}" if pc == 0 and os.path.isfile(img)
                      else "preview: skipped (no OpenGL here) — the .stl is fine")
     if not ok and not issues:
@@ -475,12 +478,13 @@ def fortnite_island(plan, project: str = "") -> str:
     n = len(field)
     hm = write_heightmap(field, _out_path(f"{base}/terrain/{name}_heightmap.png"))
     water = float(p.get("water", 0.18))
+    zs = float(p.get("z_scale", 12))          # landscape Z scale: 12 -> ~61 m total, ~11 m per terrace
     groups, report = [], []
     for i, g in enumerate(p.get("props", [])[:6]):
         spacing = float(g.get("min_spacing", 800)) / 100.0                 # cm -> px (1 px = 1 m)
         lo, hi = (g.get("height") or [water + 0.03, 0.85])[:2]
         pts = scatter(field, min(int(g.get("count", 40)), 100), spacing, lo, hi, seed=int(p.get("seed", 1)) + i)
-        world = [to_world(n, x, y, h) for x, y, h in pts]
+        world = [to_world(n, x, y, h, z_scale=zs) for x, y, h in pts]
         groups.append({"asset": g.get("asset", f"prop{i}"), "points": world})
         report.append(f"{g.get('asset')}: {len(world)} points")
     with open(_out_path(f"{base}/{name}_props.json"), "w", encoding="utf-8") as f:
@@ -496,7 +500,9 @@ def fortnite_island(plan, project: str = "") -> str:
                                    {"type": "score_manager_device", "count": 1},
                                    {"type": "end_game_device", "count": 1}]
     md = [f"# {name} — place these in UEFN", "",
-          f"1. Landscape mode > Import from File: `{hm['heightmap']}` ({n}x{n}), scale X/Y 100, Z 100.",
+          f"1. Landscape mode > Import from File: `terrain/{os.path.basename(hm['heightmap'])}` ({n}x{n}), "
+          f"location 0,0,0, scale X/Y 100, **Z {zs:g}** (props below are placed for exactly this Z; "
+          f"height span ≈ {512 * zs / 100:.0f} m).",
           "2. Verse > Build Verse Code (Ctrl+Shift+B). Drag the new devices from the Content Browser "
           f"(`{cls}_game`, `{cls}_props`) into the level.", "3. Place and wire:"]
     md += [f"   - {d.get('count', 1)} x {d['type']}" + (f" — {d['note']}" if d.get("note") else "") for d in devices]
@@ -506,7 +512,8 @@ def fortnite_island(plan, project: str = "") -> str:
     with open(_out_path(f"{base}/DEVICES.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(md) + "\n")
     lint = [f"{fn}: " + ("clean" if not verse_lint(src) else "; ".join(verse_lint(src)[:3])) for fn, src in verse.items()]
-    return (f"OK: island {name}\n- terrain: {hm['heightmap']} ({n}x{n}) + preview {hm['preview']}\n"
+    return (f"OK: island {name}\n- terrain: {hm['heightmap']} ({n}x{n}, import Z scale {zs:g} ≈ "
+            f"{512 * zs / 100:.0f} m tall) + preview {hm['preview']}\n"
             f"- props: {', '.join(report) or 'none'}\n- verse -> {dest}: {', '.join(verse)}\n"
             f"- checklist: {base}/DEVICES.md\n- verse lint: " + " | ".join(lint))
 
@@ -731,7 +738,7 @@ def unreal_new_project(name: str, template: str = "blank", location: str = "") -
     with open(up, encoding="utf-8") as f:
         data = json.load(f)
     plugins = data.setdefault("Plugins", [])
-    for pl in ("PythonScriptPlugin", "EditorScriptingUtilities"):
+    for pl in ("PythonScriptPlugin", "EditorScriptingUtilities", "RemoteControl"):
         if not any(x.get("Name") == pl for x in plugins):
             plugins.append({"Name": pl, "Enabled": True})
     with open(up, "w", encoding="utf-8") as f:

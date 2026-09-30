@@ -224,7 +224,7 @@ def _need(key: str) -> str:
 
 def _run(cmd: list, timeout: int, cwd: str | None = None) -> tuple[int, str]:
     r = subprocess.run(cmd, cwd=cwd or str(tools.SANDBOX), capture_output=True, text=True,
-                       timeout=timeout, errors="replace")
+                       timeout=timeout, errors="replace", stdin=subprocess.DEVNULL)   # never eat MCP stdin
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
@@ -234,7 +234,7 @@ def _spawn(cmd: list, cwd: str | None = None) -> None:
         kw["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | NEW_PROCESS_GROUP
     else:
         kw["start_new_session"] = True
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+    subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
 
 
 def _tail(text: str, n: int = 4000) -> str:

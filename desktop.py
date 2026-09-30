@@ -17,6 +17,11 @@ import threading
 import time
 
 import paths
+
+if __name__ == "__main__" and "--mcp" in sys.argv:          # run one of our MCP servers on stdio
+    from mcp_servers import main as _mcp_main
+    sys.exit(_mcp_main(sys.argv[sys.argv.index("--mcp") + 1:]))
+
 import app as backend
 
 
@@ -65,6 +70,7 @@ def serve(port: int):
     backend.init_workspace()        # memory in the data dir; the user's chosen workspace folder
     backend.seed_default_subagents()
     backend.startup_apps()          # Roblox Studio + Unreal: install if missing, run in background
+    backend.startup_bridges()       # live bridges (Roblox plugin queue) + our MCP servers as connectors
     backend.startup_integrations()  # Telegram bot + Gmail watcher (only if enabled in Customize)
     backend.app.run(host=HOST, port=port, threaded=True, use_reloader=False)
 

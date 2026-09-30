@@ -327,6 +327,56 @@ def api_settings_save():
 
 # ---- integrations: Telegram bot + Gmail watcher -----------------------------
 
+def seed_builtin_connectors() -> None:
+    """Our own MCP servers (mcp_servers/) as connectors: added once, command refreshed each
+    start (the exe path moves on updates), user's enabled/disabled choice kept."""
+    try:
+        import mcp_servers
+        items = load_connectors()
+        have = {str(c.get("name", "")).lower(): c for c in items}
+        for b in mcp_servers.builtin_connectors():
+            cur = have.get(b["name"])
+            if cur is None:
+                items.append(b)
+            elif cur.get("builtin"):
+                cur.update({k: b[k] for k in ("command", "args", "transport", "desc", "id")})
+        save_connectors(items)
+    except Exception as e:
+        print(f"builtin connectors: {e}")
+
+
+def startup_bridges() -> None:
+    try:
+        import live
+        live.token()
+        live.start_roblox_host()                  # Studio plugin polls this while the app runs
+    except Exception as e:
+        print(f"bridges: {e}")
+    seed_builtin_connectors()
+
+
+@app.get("/api/bridges")
+def api_bridges():
+    import live
+    return jsonify(live.status())
+
+
+@app.post("/api/bridges")
+def api_bridges_do():
+    if request.headers.get("X-NC") != "1":
+        return jsonify({"error": "missing X-NC header"}), 403
+    import live
+    b = request.get_json(force=True) or {}
+    act = {"blender": live.install_blender_addon, "roblox": live.install_roblox_plugin,
+           "unreal": lambda: live.unreal_enable_live(b.get("project", ""))}.get(b.get("app"))
+    if not act:
+        return jsonify({"error": "app must be blender, roblox or unreal"}), 400
+    try:
+        return jsonify({"result": act()})
+    except Exception as e:
+        return jsonify({"result": f"error: {e}"})
+
+
 def startup_integrations() -> None:
     try:
         integrations.start_all(sys.modules[__name__])
@@ -1800,6 +1850,7 @@ def main():
     init_workspace()
     seed_default_subagents()
     startup_apps()
+    startup_bridges()
     startup_integrations()
 
     print(f"workdir (sandbox): {tools.SANDBOX}")

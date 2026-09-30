@@ -40,6 +40,10 @@ toolcalls.py   recovers tool calls small models TYPE as JSON text; hides that JS
 skill_router.py dynamic skill loader: frontmatter `domain`/`triggers` -> routed skills
 exec_tags.py   ```<lang> file=<path> run``` blocks -> write_file + engine step
 scraper.py     web_scrape tool (trafilatura -> markdown, SSRF-guarded)
+mcp_servers/   OUR MCP server per app (blender/unreal/roblox/openscad/fortnite, 60 tools):
+               `--mcp <name>`, registered as built-in connectors (docs/MCP_SERVERS.md)
+live.py        live bridges: Blender add-on :9876, Roblox plugin queue :9877, UE Remote Control :30010
+bridges/       the in-app halves: Blender add-on (.py), Roblox Studio plugin (.lua)
 integrations.py + telegram_bridge.py + gmail_listener.py + google_auth.py + vault.py: owner-locked Telegram bot, read-only Gmail watcher (Sign in with Google), secrets in OS keychain (docs/INTEGRATIONS.md)
 vision.py      image attachments: save to workspace/attachments, native or described-by-vision-model
 context.py     collapse old tool output, trim old turns
@@ -115,7 +119,7 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
 ## Backend API (keep event/field names stable, or change both sides at once)
 `/api/branding /config /settings /models /skills /memory /tree /file /vm /system /tasks
 /bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
-/fs/list /fs/read /workspace /integrations /google/{signin,signout}
+/fs/list /fs/read /workspace /integrations /google/{signin,signout} /bridges
 /git/{status,diff,push} /chat(SSE) /approve`
 SSE events: `token, tool_call, tool_result, approval, image_note, error, done`.
 Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` gives them natively to a vision lead or has the `vision_model` describe them for a text-only lead.

@@ -199,6 +199,15 @@
           <pre class="setup-log" id="setup-log" hidden></pre>
         </div>
         <ul id="app-cards" class="app-cards"></ul>
+        <h4>Live control <span class="muted-inline" id="bridge-state"></span></h4>
+        <p class="muted">Lets the agents change what's open right now (every change is one undo step). Also available to other AI apps as MCP servers: <code>Night Crew --mcp blender|unreal|roblox|openscad|fortnite</code>.</p>
+        <div class="row">
+          <button type="button" class="pill ghost small" data-bridge="blender">Install Blender add-on</button>
+          <button type="button" class="pill ghost small" data-bridge="roblox">Install Roblox Studio plugin</button>
+        </div>
+        <div class="row"><input id="bridge-ue" class="field" placeholder="Unreal project (.uproject) to enable live control on">
+          <button type="button" class="pill small" data-bridge="unreal">Enable</button></div>
+        <pre class="setup-log" id="bridge-log" hidden></pre>
         <h4>Project folders</h4>
         <p class="muted">Existing projects outside the sandbox: an Unreal project folder, a Rojo project, your <code>.blend</code> files. Agents can only open or change projects listed here.</p>
         <ul id="proj-list" class="proj-list"></ul>
