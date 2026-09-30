@@ -891,8 +891,11 @@ async function loadIntegrations() {
     $("#tg-state").textContent = !c.telegram.enabled ? "off"
       : c.telegram.owner_id ? `paired · ${s.telegram ? "running" : "stopped"}${s.telegram_error ? " · " + s.telegram_error : ""}`
       : c.telegram.pair_code ? `not paired — send  /pair ${c.telegram.pair_code}  to your bot` : "paste a token, then save";
-    $("#gm-on").checked = c.gmail.enabled; $("#gm-addr").value = c.gmail.address;
-    $("#gm-pass").value = ""; $("#gm-pass").placeholder = c.gmail.app_password ? "app password saved — paste a new one to replace" : "Google app password (16 chars)";
+    $("#gm-on").checked = c.gmail.enabled; $("#gm-cid").value = c.gmail.client_id;
+    $("#gm-csec").value = ""; $("#gm-csec").placeholder = c.gmail.client_secret ? "secret saved — paste a new one to replace" : "Client secret (Desktop apps have one)";
+    $("#gm-acct").textContent = s.google_signed_in ? `signed in${c.gmail.account ? " as " + c.gmail.account : ""} · secrets in ${s.vault}`
+      : s.google.status === "waiting" ? "finish signing in in your browser…" : s.google.error ? "sign-in: " + s.google.error : "not signed in";
+    $("#gm-signin").hidden = !!s.google_signed_in; $("#gm-signout").hidden = !s.google_signed_in;
     $("#gm-wl").value = (c.gmail.whitelist || []).join("\n");
     $("#gm-state").textContent = !c.gmail.enabled ? "off" : s.gmail ? "watching" + (s.gmail_error ? " · " + s.gmail_error : "") : "stopped";
   } catch {}
@@ -901,8 +904,21 @@ $("#int-save")?.addEventListener("click", async () => {
   await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json", "X-NC": "1" },
     body: JSON.stringify({
       telegram: { enabled: $("#tg-on").checked, token: $("#tg-token").value.trim(), auto: $("#tg-auto").checked },
-      gmail: { enabled: $("#gm-on").checked, address: $("#gm-addr").value.trim(), app_password: $("#gm-pass").value.trim(),
+      gmail: { enabled: $("#gm-on").checked, client_id: $("#gm-cid").value.trim(), client_secret: $("#gm-csec").value.trim(),
                whitelist: $("#gm-wl").value } }) });
   setTimeout(loadIntegrations, 800);
 });
 document.querySelector('.tab[data-tab="integrations"]')?.addEventListener("click", loadIntegrations);
+
+$("#gm-signin")?.addEventListener("click", async () => {
+  await $("#int-save").click();                                   // save client id/secret first
+  await new Promise((r) => setTimeout(r, 600));
+  const d = await (await fetch("/api/google/signin", { method: "POST", headers: { "X-NC": "1" } })).json();
+  $("#gm-acct").textContent = d.ok ? "finish signing in in your browser…" : d.error;
+  const t = setInterval(async () => { await loadIntegrations();
+    if ($("#gm-signin").hidden) clearInterval(t); }, 2500);
+  setTimeout(() => clearInterval(t), 300000);
+});
+$("#gm-signout")?.addEventListener("click", async () => {
+  await fetch("/api/google/signout", { method: "POST", headers: { "X-NC": "1" } }); loadIntegrations();
+});

@@ -348,6 +348,24 @@ def api_integrations_save():
     return jsonify({"config": integrations.masked(), "status": integrations.status()})
 
 
+@app.post("/api/google/signin")
+def api_google_signin():
+    if request.headers.get("X-NC") != "1":
+        return jsonify({"error": "missing X-NC header"}), 403
+    import google_auth
+    return jsonify(google_auth.start_signin())
+
+
+@app.post("/api/google/signout")
+def api_google_signout():
+    if request.headers.get("X-NC") != "1":
+        return jsonify({"error": "missing X-NC header"}), 403
+    import google_auth
+    google_auth.sign_out()
+    startup_integrations()
+    return jsonify({"ok": True})
+
+
 # ---- creative apps: Blender / Unreal / Roblox ------------------------------
 
 @app.get("/api/apps")

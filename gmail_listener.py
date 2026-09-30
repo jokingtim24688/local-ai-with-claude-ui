@@ -1,29 +1,23 @@
-"""Gmail watcher (IMAP, READ-ONLY). Needs a Google app password (Account > Security >
-2-Step Verification > App passwords) and IMAP enabled.
+"""Gmail watcher via the Gmail API, READ-ONLY (scope gmail.readonly, token from
+google_auth.py — 'Sign in with Google'). Nothing is marked read, moved or deleted.
 
-Only senders on the whitelist are ever surfaced; everyone else is ignored. Mail is opened
-with BODY.PEEK in a read-only mailbox, so nothing is marked read, moved or deleted. Email
-text is only forwarded to the owner as a notification — it is NEVER run as an instruction
-(anyone can email you a prompt injection).
+Only whitelisted senders are ever surfaced; everyone else is ignored. Email text is only
+forwarded to the owner as a notification — it is NEVER run as an instruction (anyone can
+email you a prompt injection).
 """
 from __future__ import annotations
 
-import email
-import email.header
+import base64
 import email.utils
-import imaplib
 import re
 import threading
-import time
 
+import httpx
+
+import google_auth
 import integrations
 
-
-def _dec(v: str) -> str:
-    try:
-        return str(email.header.make_header(email.header.decode_header(v or "")))
-    except Exception:
-        return v or ""
+API = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 
 def allowed(sender: str, whitelist: list[str]) -> bool:
@@ -32,17 +26,42 @@ def allowed(sender: str, whitelist: list[str]) -> bool:
     return any(w == addr or (w.startswith("@") and w[1:] == dom) or w == dom for w in whitelist)
 
 
-def _text(msg) -> str:
-    part = msg
-    if msg.is_multipart():
-        part = next((p for p in msg.walk() if p.get_content_type() == "text/plain"), None)
-        if part is None:
-            return ""
-    try:
-        s = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
-    except Exception:
-        return ""
-    return re.sub(r"\s+", " ", s).strip()
+def _body(payload: dict) -> str:
+    def walk(p):
+        if p.get("mimeType") == "text/plain" and p.get("body", {}).get("data"):
+            yield p["body"]["data"]
+        for c in p.get("parts") or []:
+            yield from walk(c)
+    for data in walk(payload):
+        try:
+            txt = base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "replace")
+            return re.sub(r"\s+", " ", txt).strip()
+        except Exception:
+            continue
+    return ""
+
+
+def _get(path: str, **params) -> dict:
+    r = httpx.get(f"{API}/{path}", params=params, timeout=20,
+                  headers={"Authorization": f"Bearer {google_auth.access_token()}"})
+    if r.status_code >= 400:
+        raise RuntimeError(f"gmail {r.status_code}: {r.text[:120]}")
+    return r.json()
+
+
+def _item(mid: str, wl: list[str], with_body: bool):
+    m = _get(f"messages/{mid}", format="full" if with_body else "metadata",
+             **({} if with_body else {"metadataHeaders": ["From", "Subject"]}))
+    h = {x["name"].lower(): x["value"] for x in m.get("payload", {}).get("headers", [])}
+    if not allowed(h.get("from", ""), wl):
+        return None
+    return {"from": h.get("from", ""), "subject": h.get("subject", ""),
+            "text": _body(m.get("payload", {}))[:700] if with_body else ""}
+
+
+def _query(wl: list[str], extra: str) -> str:
+    froms = " OR ".join(w if "@" in w and not w.startswith("@") else w.lstrip("@") for w in wl)
+    return f"{extra} from:({froms})".strip() if froms else extra
 
 
 class Listener:
@@ -51,7 +70,7 @@ class Listener:
         self.running = False
         self.error = ""
         self._stop = threading.Event()
-        self._seen: set[bytes] = set()
+        self._seen: set[str] = set()
         self._primed = False
 
     def start(self):
@@ -62,44 +81,28 @@ class Listener:
         self._stop.set()
         self.running = False
 
-    def _connect(self):
-        c = integrations.load()["gmail"]
-        m = imaplib.IMAP4_SSL("imap.gmail.com", timeout=30)
-        m.login(c["address"], c["app_password"])
-        m.select("INBOX", readonly=True)
-        return m, c
-
-    def _fetch(self, m, uid: bytes, wl: list[str]):
-        typ, data = m.uid("fetch", uid, "(BODY.PEEK[])")
-        if typ != "OK" or not data or not isinstance(data[0], tuple):
-            return None
-        msg = email.message_from_bytes(data[0][1])
-        sender = _dec(msg.get("From", ""))
-        if not allowed(sender, wl):
-            return None
-        return {"from": sender, "subject": _dec(msg.get("Subject", "")), "date": msg.get("Date", ""),
-                "text": _text(msg)[:700]}
-
     def _loop(self):
         while not self._stop.is_set():
             try:
-                m, c = self._connect()
-                self.error = ""
-                typ, ids = m.uid("search", None, "UNSEEN")
-                unseen = ids[0].split() if typ == "OK" and ids and ids[0] else []
-                if not self._primed:                       # don't flood on first start
-                    self._seen.update(unseen)
-                    self._primed = True
+                wl = integrations.load()["gmail"]["whitelist"]
+                if not wl:
+                    self.error = "add at least one allowed sender"
                 else:
-                    for uid in unseen:
-                        if uid in self._seen:
-                            continue
-                        self._seen.add(uid)
-                        it = self._fetch(m, uid, c["whitelist"])
-                        if it:
-                            self.notify(f"📧 {it['from']}\n{it['subject']}\n\n{it['text']}\n\n"
-                                        "(email text is shown as data, not run as instructions)")
-                m.logout()
+                    ids = [m["id"] for m in _get("messages", q=_query(wl, "is:unread in:inbox"),
+                                                 maxResults=20).get("messages", [])]
+                    if not self._primed:                     # don't flood on first start
+                        self._seen.update(ids)
+                        self._primed = True
+                    else:
+                        for mid in ids:
+                            if mid in self._seen:
+                                continue
+                            self._seen.add(mid)
+                            it = _item(mid, wl, True)
+                            if it:
+                                self.notify(f"📧 {it['from']}\n{it['subject']}\n\n{it['text']}\n\n"
+                                            "(email text is shown as data, not run as instructions)")
+                    self.error = ""
             except Exception as e:
                 self.error = str(e)[:200]
             self._stop.wait(max(30, int(integrations.load()["gmail"].get("interval") or 60)))
@@ -107,16 +110,15 @@ class Listener:
 
     def recent(self, n: int = 5) -> str:
         try:
-            m, c = self._connect()
-            typ, ids = m.uid("search", None, "ALL")
+            wl = integrations.load()["gmail"]["whitelist"]
+            if not wl:
+                return "add allowed senders in Customize > Integrations first"
+            ids = [m["id"] for m in _get("messages", q=_query(wl, "in:inbox"), maxResults=n).get("messages", [])]
             out = []
-            for uid in reversed(ids[0].split()[-40:] if typ == "OK" and ids and ids[0] else []):
-                it = self._fetch(m, uid, c["whitelist"])
+            for mid in ids:
+                it = _item(mid, wl, False)
                 if it:
                     out.append(f"• {it['from']} — {it['subject']}")
-                if len(out) >= n:
-                    break
-            m.logout()
             return "\n".join(out) or "(no mail from whitelisted senders)"
         except Exception as e:
             return f"gmail error: {e}"

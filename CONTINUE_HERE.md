@@ -1,3 +1,15 @@
+# >>> PIVOT 28 — Sign in with Google + keychain vault — DONE (2026-09-30) <<<
+Redo recipe:
+1. vault.py: keyring on win32/darwin only (Credential Manager / Keychain), else chmod-600 vault.json.
+2. google_auth.py: OAuth installed-app + PKCE + 127.0.0.1 loopback, httpx only; scope gmail.readonly;
+   refresh token in vault (`google.refresh_token`); /api/google/signin|signout need X-NC:1.
+3. integrations.py: secrets -> vault (telegram.token, gmail.client_secret), old plaintext migrated out of json.
+   gmail schema = client_id, client_secret, account, whitelist, interval (app_password REMOVED).
+4. gmail_listener.py: Gmail API (list unread from whitelisted senders, format=full), same Listener/recent API.
+5. UI Integrations tab: client id/secret, Sign in / Sign out, status. docs/INTEGRATIONS.md = user setup.
+6. keyring added to requirements + both build configs.
+Tested in sandbox with mocked Google (PKCE, bad-state reject, refresh, revoke). NOT tested on real Win/mac.
+
 # >>> PIVOT 27 — Telegram bot + Gmail watcher + scraper — DONE (2026-09-30) <<<
 Redo recipe:
 1. scraper.py (trafilatura -> markdown; SSRF guard; optional Playwright render) + web.py tool `web_scrape`

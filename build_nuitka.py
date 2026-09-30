@@ -30,7 +30,8 @@ DATA = [
     "--include-package=trafilatura", "--include-package-data=trafilatura",   # scraper
     "--include-package=courlan", "--include-package=htmldate", "--include-package=justext",
     "--include-module=scraper", "--include-module=integrations", "--include-module=telegram_bridge",
-    "--include-module=gmail_listener", "--include-module=vision", "--include-module=context",
+    "--include-module=gmail_listener", "--include-module=vault", "--include-module=google_auth",
+    "--include-package=keyring", "--include-package=jaraco", "--include-module=vision", "--include-module=context",
 ]
 if WIN:
     PLATFORM = [

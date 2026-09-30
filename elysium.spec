@@ -30,7 +30,8 @@ hiddenimports = (
     collect_submodules("webview")
     + collect_submodules("flask")
     + ["ollama", "httpx", "trafilatura", "scraper", "integrations", "telegram_bridge",
-       "gmail_listener", "vision", "context"]
+       "gmail_listener", "vision", "context", "vault", "google_auth", "keyring"]
+    + collect_submodules("keyring")
     + collect_submodules("trafilatura")
 )
 

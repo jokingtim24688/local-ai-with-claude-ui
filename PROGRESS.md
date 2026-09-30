@@ -311,3 +311,6 @@ vision.py, context.py, num_ctx 16384, KV q4_0, Image chip/paste/drop in composer
 
 ## PIVOT 27 — Telegram + Gmail + scraper
 See CONTINUE_HERE.md redo recipe.
+
+## PIVOT 28 — Sign in with Google + keychain vault
+See CONTINUE_HERE.md redo recipe.

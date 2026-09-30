@@ -6,3 +6,4 @@ psutil>=5.9  # system load (CPU/RAM) for the parent agent
 httpx>=0.27  # Telegram bridge + scraper (already pulled in by ollama)
 trafilatura>=1.12  # web scraper: page -> clean markdown for the agents
 # optional JS-page scraping: pip install playwright && playwright install chromium
+keyring>=24  # Windows Credential Manager / macOS Keychain for tokens

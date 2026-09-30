@@ -1,8 +1,9 @@
-"""Telegram + Gmail wiring. Secrets live in NightCrew-data/integrations.json (gitignored,
-chmod 600 where supported) — never in the repo, never returned by the API in full.
+"""Telegram + Gmail wiring. Secrets (bot token, Google client secret, Google refresh token)
+live in the OS keychain via vault.py — NOT in integrations.json, never returned by the API.
 
-    telegram: token, owner_id (0 = not paired), pair_code, model, auto (approve tools from phone)
-    gmail:    address, app_password (Google *app password*, not your login), whitelist[]
+    telegram: token*, owner_id (0 = not paired), pair_code, model, auto (approve tools from phone)
+    gmail:    client_id, client_secret*, account (shown), whitelist[], interval   (sign-in: google_auth.py)
+    (* = stored in the vault)
 """
 from __future__ import annotations
 
@@ -12,13 +13,14 @@ import secrets
 import threading
 
 import paths
+import vault
 
 _LOCK = threading.Lock()
 DEFAULTS = {
     "telegram": {"enabled": False, "token": "", "owner_id": 0, "pair_code": "", "model": "", "auto": False},
-    "gmail": {"enabled": False, "address": "", "app_password": "", "whitelist": [], "interval": 60},
+    "gmail": {"enabled": False, "client_id": "", "client_secret": "", "account": "", "whitelist": [], "interval": 60},
 }
-SECRET_KEYS = {"telegram": ("token",), "gmail": ("app_password",)}
+SECRET_KEYS = {"telegram": ("token",), "gmail": ("client_secret",)}
 
 
 def _path() -> str:
@@ -27,20 +29,34 @@ def _path() -> str:
 
 def load() -> dict:
     d = json.loads(json.dumps(DEFAULTS))
+    saved, dirty = {}, False
     try:
         with open(_path(), encoding="utf-8") as f:
             saved = json.load(f)
-        for sec in d:
-            d[sec].update({k: v for k, v in (saved.get(sec) or {}).items() if k in d[sec]})
     except Exception:
         pass
+    for sec in d:
+        d[sec].update({k: v for k, v in (saved.get(sec) or {}).items() if k in d[sec]})
+        for k in SECRET_KEYS.get(sec, ()):
+            if d[sec][k]:                                   # plaintext from an older version -> vault
+                vault.put(f"{sec}.{k}", d[sec][k])
+                dirty = True
+            d[sec][k] = vault.get(f"{sec}.{k}")
+    if dirty:
+        save(d)
     return d
 
 
 def save(d: dict) -> None:
     with _LOCK:
+        plain = json.loads(json.dumps(d))
+        for sec, keys in SECRET_KEYS.items():
+            for k in keys:
+                if plain[sec].get(k):
+                    vault.put(f"{sec}.{k}", plain[sec][k])
+                plain[sec][k] = ""                          # never on disk
         with open(_path(), "w", encoding="utf-8") as f:
-            json.dump(d, f, indent=2)
+            json.dump(plain, f, indent=2)
         try:
             os.chmod(_path(), 0o600)
         except Exception:
@@ -87,11 +103,22 @@ def masked() -> dict:
 _RUN = {"tg": None, "gm": None}
 
 
+def _signed_in() -> bool:
+    import google_auth
+    return google_auth.signed_in()
+
+
+def _google_state() -> dict:
+    import google_auth
+    return dict(google_auth.STATE)
+
+
 def status() -> dict:
     return {"telegram": bool(_RUN["tg"] and _RUN["tg"].running),
             "gmail": bool(_RUN["gm"] and _RUN["gm"].running),
             "telegram_error": getattr(_RUN["tg"], "error", ""),
-            "gmail_error": getattr(_RUN["gm"], "error", "")}
+            "gmail_error": getattr(_RUN["gm"], "error", ""),
+            "google_signed_in": _signed_in(), "google": _google_state(), "vault": vault.backend()}
 
 
 def start_all(backend) -> None:
@@ -106,7 +133,8 @@ def start_all(backend) -> None:
     if cfg["telegram"]["enabled"] and cfg["telegram"]["token"]:
         _RUN["tg"] = telegram_bridge.Bridge(backend)
         _RUN["tg"].start()
-    if cfg["gmail"]["enabled"] and cfg["gmail"]["address"] and cfg["gmail"]["app_password"]:
+    import google_auth
+    if cfg["gmail"]["enabled"] and google_auth.signed_in():
         notify = _RUN["tg"].notify_owner if _RUN["tg"] else (lambda text: None)
         _RUN["gm"] = gmail_listener.Listener(notify)
         _RUN["gm"].start()

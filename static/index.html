@@ -234,8 +234,12 @@
         <label class="row"><input type="checkbox" id="tg-auto"> approve tools from the phone without asking</label>
         <h4>Gmail (read-only)</h4>
         <label class="row"><input type="checkbox" id="gm-on"> enabled</label>
-        <input id="gm-addr" placeholder="you@gmail.com" autocomplete="off">
-        <input id="gm-pass" type="password" placeholder="Google app password (16 chars)" autocomplete="off">
+        <p class="hint">One-time: Google Cloud Console → new project → enable Gmail API → Credentials → OAuth client “Desktop app”. Paste its ID here.</p>
+        <input id="gm-cid" placeholder="Google OAuth Client ID" autocomplete="off">
+        <input id="gm-csec" type="password" placeholder="Client secret (Desktop apps have one)" autocomplete="off">
+        <p class="hint" id="gm-acct"></p>
+        <button type="button" class="chip" id="gm-signin">Sign in with Google</button>
+        <button type="button" class="chip" id="gm-signout" hidden>Sign out</button>
         <textarea id="gm-wl" rows="3" placeholder="allowed senders, one per line (name@site.com or @site.com)"></textarea>
         <p class="hint" id="gm-state"></p>
         <button type="button" class="chip on" id="int-save">Save &amp; restart</button>
