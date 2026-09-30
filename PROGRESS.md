@@ -305,3 +305,6 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 
 ## PIVOT 25 — engine bridge (OpenSCAD, UE5, UEFN/Verse, Roblox)
 - skill_router (domain skills by triggers, budgets), exec_tags (fenced blocks -> write/run), engines.py (openscad render, verse lint, uefn, heightmaps+scatter, island/obby/ue_layout plans, rbxlx), nightcrew_cli.py, 4 new skills, openscad/fortnite workers, domain-filtered lead tools. docs/ENGINE_BRIDGE.md.
+
+## PIVOT 26 — images + vision fallback + context control
+vision.py, context.py, num_ctx 16384, KV q4_0, Image chip/paste/drop in composer, SSE image_note. See CONTINUE_HERE.md redo recipe.

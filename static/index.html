@@ -88,6 +88,7 @@
         <div class="composer-wrap">
           <form id="composer" class="composer glass">
             <div class="chat-ctx" id="chat-ctx" hidden></div>
+            <div class="img-strip" id="img-strip" hidden></div>
             <textarea id="input" rows="1" placeholder="Describe a model, a level, or a game mechanic…"></textarea>
             <div class="composer-bar">
               <nav class="viewseg" id="views">
@@ -99,6 +100,8 @@
                 <span class="glyph"></span>
                 <select id="model" aria-label="model"></select>
               </div>
+              <button type="button" class="chip" id="img-btn" title="attach image (or paste / drop one)">Image</button>
+              <input type="file" id="img-file" accept="image/*" multiple hidden>
               <button type="button" class="chip on" id="tools-chip">Tools</button>
               <button type="button" class="chip" id="web-chip">Web</button>
               <button type="button" class="chip" id="agents-chip" title="subagents">Agents</button>

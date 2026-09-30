@@ -415,15 +415,68 @@ function addToolResult(ref, result) {
     openFile(ref.args.path);
 }
 
+/* ---------- images: paste / attach / drop ---------- */
+const pending = [];                                   // dataURLs waiting to be sent
+function shrink(file, max = 1280) {
+  return new Promise((res) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url); res(cv.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+    img.src = url;
+  });
+}
+async function addImages(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/") || pending.length >= 4) continue;
+    const d = await shrink(f); if (d) pending.push(d);
+  }
+  paintStrip();
+}
+function paintStrip() {
+  const el = $("#img-strip"); el.hidden = !pending.length; el.innerHTML = "";
+  pending.forEach((d, i) => {
+    const t = document.createElement("span"); t.className = "img-thumb";
+    t.innerHTML = `<img src="${d}" alt="attached image"><button type="button" title="remove">×</button>`;
+    t.querySelector("button").onclick = () => { pending.splice(i, 1); paintStrip(); };
+    el.appendChild(t);
+  });
+}
+input.addEventListener("paste", (e) => {
+  const fs = [...(e.clipboardData?.items || [])].filter((i) => i.kind === "file" && i.type.startsWith("image/"))
+    .map((i) => i.getAsFile()).filter(Boolean);
+  if (fs.length) { e.preventDefault(); addImages(fs); }
+});
+input.closest("form").addEventListener("dragover", (e) => { if (e.dataTransfer?.types?.includes("Files")) e.preventDefault(); });
+input.closest("form").addEventListener("drop", (e) => {
+  const fs = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith("image/"));
+  if (fs.length) { e.preventDefault(); addImages(fs); }
+});
+$("#img-btn").addEventListener("click", () => $("#img-file").click());
+$("#img-file").addEventListener("change", (e) => { addImages([...e.target.files]); e.target.value = ""; });
+
 async function send() {
   if (state.busy) return;
-  let text = input.value.trim(); if (!text) return;
+  let text = input.value.trim(); if (!text && !pending.length) return;
+  if (!text) text = "What is in this image?";
+  const sendImages = pending.splice(0); paintStrip();
   let web = state.web;
   if (text.startsWith("/web")) { web = true; text = text.slice(4).trim(); }
   const c = curConvo();
   if (c.messages.length === 0) { c.title = text.slice(0, 42); renderHistory(); }
   chatView.classList.remove("home");
-  addMsg("user", text); c.messages.push({ role: "user", content: text });
+  addMsg("user", text);
+  if (sendImages.length) {
+    const box = chat.lastElementChild.querySelector(".body");
+    sendImages.forEach((d) => { const im = document.createElement("img"); im.src = d; im.className = "msg-img"; box.appendChild(im); });
+  }
+  c.messages.push({ role: "user", content: text });
+  state.sendImages = sendImages;
   switchOnConnectors(c, text);
   input.value = ""; input.style.height = "auto"; save();
   setBusy(true);
@@ -434,7 +487,9 @@ function setBusy(b) { state.busy = b; $("#send").disabled = b; }
 
 async function streamChat(web) {
   const c = curConvo();
-  const msgs = [...c.messages];
+  const msgs = c.messages.map((m) => ({ ...m }));
+  if (state.sendImages?.length) msgs[msgs.length - 1].images = state.sendImages;   // this turn only
+  state.sendImages = null;
   const chatRules = chatInstructions(c);                      // this chat only
   if (chatRules) msgs.unshift({ role: "system", content: chatRules });
   if (state.instructions) msgs.unshift({ role: "system", content: state.instructions });
@@ -457,6 +512,14 @@ async function streamChat(web) {
         acc += data; paintStream(bodyEl, acc);
       } else if (ev === "tool_call") { bodyEl?.classList.remove("caret"); bodyEl = null; ref = addTool(data.name, data.args); }
       else if (ev === "tool_result") { if (ref) addToolResult(ref, data.result); ref = null; }
+      else if (ev === "image_note") {
+        const last = [...c.messages].reverse().find((m) => m.role === "user");
+        if (last) last.content += `\n[attached: ${data.paths.join(", ")}]` + (data.description ? `\n${data.description}` : "");
+        const n = document.createElement("div"); n.className = "img-note";
+        n.textContent = data.mode === "native" ? "image sent to the model"
+          : `image read by ${data.model || "no vision model"} → text for the lead`;
+        chat.appendChild(n); bottom();
+      }
       else if (ev === "approval") { await handleApproval(data); }
       else if (ev === "error") { addMsg("assistant", "error: " + data); }
       else if (ev === "done") { bodyEl?.classList.remove("caret"); if (acc) c.messages.push({ role: "assistant", content: acc }); }

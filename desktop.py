@@ -112,7 +112,7 @@ def ensure_ollama():
     # setdefault -> the user's own OLLAMA_* settings always win.
     env = dict(os.environ)
     for k, v in (("OLLAMA_MAX_LOADED_MODELS", "1"), ("OLLAMA_NUM_PARALLEL", "1"),
-                 ("OLLAMA_FLASH_ATTENTION", "1"), ("OLLAMA_KV_CACHE_TYPE", "q8_0")):
+                 ("OLLAMA_FLASH_ATTENTION", "1"), ("OLLAMA_KV_CACHE_TYPE", "q4_0")):
         env.setdefault(k, v)
     try:
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW

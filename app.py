@@ -22,6 +22,8 @@ import web
 import paths
 import apps
 import engines
+import vision
+import context
 
 try:
     import ollama
@@ -91,7 +93,9 @@ def load_settings() -> dict:
     d = {"worker_model": b.get("worker_model", "qwen2.5-coder:3b"),
          "auto_setup": True,        # install Roblox Studio / Unreal (launcher) if missing
          "launch_on_start": True,   # start them in the background when the app opens
-         "workdir": ""}             # folder the agents work in ("" = the built-in workspace)
+         "workdir": "",             # folder the agents work in ("" = the built-in workspace)
+         "vision_model": vision.DEFAULT_VISION,   # describes pasted images for a text-only lead
+         "num_ctx": 16384}          # context window for MAIN and workers
     try:
         with open(_settings_path(), encoding="utf-8") as f:
             d.update({k: v for k, v in json.load(f).items() if k in d})
@@ -1103,7 +1107,14 @@ def run_subagent(client, default_model: str, sub: dict, task: str, connectors=No
             RUNNING_SUB["name"] = ""
 
 
-CTX = 8192                           # context window for MAIN and workers (default is 4096)
+CTX = 16384                          # default context window; settings num_ctx overrides
+
+
+def ctx_size() -> int:
+    try:
+        return max(4096, min(32768, int(load_settings().get("num_ctx") or CTX)))
+    except Exception:
+        return CTX
 _INSTALLED = {"at": 0.0, "names": set()}
 
 
@@ -1213,7 +1224,7 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
         acc = ""
         calls = []
         for chunk in client.chat(model=model, messages=msgs, keep_alive=keep,
-                                 options={"num_ctx": CTX}, tools=schemas, stream=True):
+                                 options={"num_ctx": ctx_size()}, tools=schemas, stream=True):
             m = chunk.get("message", {})
             acc += m.get("content") or ""
             calls += m.get("tool_calls") or []
@@ -1568,7 +1579,18 @@ def api_chat():
         # what the user is asking for right now (last two user turns, for follow-ups)
         asks = [m.get("content", "") for m in history if m.get("role") == "user"][-2:]
         task_text = "\n".join(a for a in asks if isinstance(a, str))
-        msgs = [{"role": "system", "content": build_system(task_text)}] + history
+        hist, img_note = history, None
+        try:
+            if any(m.get("images") for m in history):
+                hist, img_note = vision.prepare(client, model, history,
+                                                load_settings()["vision_model"],
+                                                installed_models(client))
+        except Exception as e:
+            hist = [{k: v for k, v in m.items() if k != "images"} for m in history]
+            yield sse("error", f"image handling failed: {e}")
+        if img_note:
+            yield sse("image_note", img_note)
+        msgs = [{"role": "system", "content": build_system(task_text)}] + hist
 
         subs = load_subagents()
         import connectors as C
@@ -1597,8 +1619,10 @@ def api_chat():
                 calls = []
                 held = None            # None = undecided, True = looks like a text tool call
                 sent = 0               # chars of acc already streamed to the UI
+                context.collapse_tool_outputs(msgs)                  # old tool output -> head/tail
+                context.trim_history(msgs, ctx_size() * 3)          # ~3 chars/token budget
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
-                                    options={"num_ctx": CTX}, tools=schemas, stream=True)
+                                    options={"num_ctx": ctx_size()}, tools=schemas, stream=True)
                 for chunk in resp:
                     msg = chunk.get("message", {})
                     piece = msg.get("content") or ""

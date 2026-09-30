@@ -39,6 +39,8 @@ app.py         Flask backend: chat SSE + agent tool-loop, all /api/* routes
 toolcalls.py   recovers tool calls small models TYPE as JSON text; hides that JSON
 skill_router.py dynamic skill loader: frontmatter `domain`/`triggers` -> routed skills
 exec_tags.py   ```<lang> file=<path> run``` blocks -> write_file + engine step
+vision.py      image attachments: save to workspace/attachments, native or described-by-vision-model
+context.py     collapse old tool output, trim old turns
 engines.py     OpenSCAD, UEFN/Verse (lint, islands), terrain heightmaps + scatter,
                Roblox .rbxlx/obby, UE5 templates + layout plans, run_plan
 nightcrew_cli.py  every engine step as a terminal command (--workspace for VMs)
@@ -84,7 +86,7 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   (`lead_app_tools`). Skill templates are verified (OpenSCAD compiles, Verse lints clean).
 - App tools (Blender/Unreal/Roblox) are **MAIN-only**; the ones that run code or launch
   programs need approval unless Auto is on. Paths: sandbox + user-registered project
-  folders (`apps.json`) only. `num_ctx` 8192 for MAIN and workers.
+  folders (`apps.json`) only. `num_ctx` 16384 default (setting `num_ctx`) for MAIN and workers; old tool output is collapsed and old turns trimmed (`context.py`).
 - When the app starts Ollama itself, it sets `OLLAMA_MAX_LOADED_MODELS=1`,
   `NUM_PARALLEL=1`, `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q8_0` (the user's env wins).
 - Agents run in the background (no VM/Terminal tabs any more; `/api/vm` etc. remain
@@ -113,7 +115,8 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
 /bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
 /fs/list /fs/read /workspace
 /git/{status,diff,push} /chat(SSE) /approve`
-SSE events: `token, tool_call, tool_result, approval, error, done`.
+SSE events: `token, tool_call, tool_result, approval, image_note, error, done`.
+Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` gives them natively to a vision lead or has the `vision_model` describe them for a text-only lead.
 
 ## Conventions
 - Brandable only via `branding.json` — never hardcode the name/colors. Theme tokens

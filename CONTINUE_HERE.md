@@ -1,3 +1,17 @@
+# >>> PIVOT 26 — images + vision fallback + context control — DONE (2026-09-30) <<<
+Redo recipe (if lost): 
+1. vision.py: is_vision(name), save_image -> workspace/attachments/, describe() via small vision model
+   (setting vision_model, default qwen2.5vl:3b, keep_alive=0), prepare(): native images for a vision
+   lead, else description appended as text. Only newest user msg keeps images.
+2. context.py: collapse_tool_outputs (old tool results -> head/tail), trim_history (drop oldest turns).
+3. app.py: settings num_ctx (16384) + vision_model; ctx_size(); api_chat calls vision.prepare, emits SSE
+   `image_note`, runs collapse+trim before every model call.
+4. desktop.py: OLLAMA_KV_CACHE_TYPE default q4_0 (needs flash attention, already set).
+5. UI: Image chip + file input, paste handler, drag-drop, thumbnail strip, downscale to 1280px JPEG,
+   `images` sent on the newest message only (never saved to localStorage), image_note handler.
+Deferred (NOT built, scope unconfirmed): Telegram bridge, MCP per-prompt routing, doc editing,
+web automation, Gmail, installer. Ask user which next.
+
 # >>> ENGINE BRIDGE — DONE (see docs/ENGINE_BRIDGE.md). User's prompt was cut off after Component 1 <<<
 Goal: OpenSCAD + UE5 + UEFN/Verse + Roblox bridge for a 3B lead (qwen2.5-coder:3b),
 dynamic skill loader, execution tags, JSON plans, CLI.
