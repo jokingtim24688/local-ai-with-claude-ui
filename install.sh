@@ -20,6 +20,9 @@ if ! command -v ollama >/dev/null; then
   fi
 fi
 
+read -r -p "Also install JS-page scraping (Playwright + Chromium, ~150 MB)? [y/N] " ans
+if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then pip install --quiet playwright && python -m playwright install chromium; fi
+
 echo "Starting Ollama..."; (ollama serve >/dev/null 2>&1 &) ; sleep 2
 # the lead (debugs) + the low-power worker (writes first drafts)
 ollama list | grep -q "hermes3:8b" || { echo "Pulling the lead model hermes3:8b..."; ollama pull hermes3:8b; }

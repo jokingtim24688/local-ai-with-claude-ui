@@ -17,6 +17,9 @@ echo Installing dependencies...
 python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r requirements.txt
 
+set /p PW=Also install JS-page scraping (Playwright + Chromium, ~150 MB)? [y/N] 
+if /i "%PW%"=="y" ( python -m pip install --quiet playwright & python -m playwright install chromium )
+
 where ollama >nul 2>&1
 if errorlevel 1 (
   echo Ollama not found. Opening the download page - install it, then re-run this script.

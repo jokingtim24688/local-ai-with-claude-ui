@@ -880,3 +880,29 @@ function toast(text, ms = 7000) {
   document.body.appendChild(t);
   setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 400); }, ms);
 }
+
+
+/* ---------- integrations (Telegram / Gmail) ---------- */
+async function loadIntegrations() {
+  try {
+    const d = await (await fetch("/api/integrations")).json(), c = d.config, s = d.status;
+    $("#tg-on").checked = c.telegram.enabled; $("#tg-auto").checked = c.telegram.auto;
+    $("#tg-token").value = ""; $("#tg-token").placeholder = c.telegram.token ? "token saved — paste a new one to replace" : "bot token from @BotFather";
+    $("#tg-state").textContent = !c.telegram.enabled ? "off"
+      : c.telegram.owner_id ? `paired · ${s.telegram ? "running" : "stopped"}${s.telegram_error ? " · " + s.telegram_error : ""}`
+      : c.telegram.pair_code ? `not paired — send  /pair ${c.telegram.pair_code}  to your bot` : "paste a token, then save";
+    $("#gm-on").checked = c.gmail.enabled; $("#gm-addr").value = c.gmail.address;
+    $("#gm-pass").value = ""; $("#gm-pass").placeholder = c.gmail.app_password ? "app password saved — paste a new one to replace" : "Google app password (16 chars)";
+    $("#gm-wl").value = (c.gmail.whitelist || []).join("\n");
+    $("#gm-state").textContent = !c.gmail.enabled ? "off" : s.gmail ? "watching" + (s.gmail_error ? " · " + s.gmail_error : "") : "stopped";
+  } catch {}
+}
+$("#int-save")?.addEventListener("click", async () => {
+  await fetch("/api/integrations", { method: "POST", headers: { "Content-Type": "application/json", "X-NC": "1" },
+    body: JSON.stringify({
+      telegram: { enabled: $("#tg-on").checked, token: $("#tg-token").value.trim(), auto: $("#tg-auto").checked },
+      gmail: { enabled: $("#gm-on").checked, address: $("#gm-addr").value.trim(), app_password: $("#gm-pass").value.trim(),
+               whitelist: $("#gm-wl").value } }) });
+  setTimeout(loadIntegrations, 800);
+});
+document.querySelector('.tab[data-tab="integrations"]')?.addEventListener("click", loadIntegrations);

@@ -158,6 +158,7 @@
       <button class="tab" data-tab="agents">Subagents</button>
       <button class="tab" data-tab="apps">Apps</button>
       <button class="tab" data-tab="connectors">Connectors</button>
+      <button class="tab" data-tab="integrations">Integrations</button>
       <button class="tab" data-tab="instructions">Instructions</button>
       <button class="tab" data-tab="memory">Memory</button>
       <button class="tab" data-tab="about">About</button>
@@ -224,6 +225,21 @@
         </div>
       </section>
 
+      <section class="tabpane" data-tab="integrations">
+        <p class="hint">Telegram bot + Gmail watcher. Secrets are stored only on this PC. The bot answers only the one chat you pair.</p>
+        <h4>Telegram</h4>
+        <label class="row"><input type="checkbox" id="tg-on"> enabled</label>
+        <input id="tg-token" type="password" placeholder="bot token from @BotFather" autocomplete="off">
+        <p class="hint" id="tg-state"></p>
+        <label class="row"><input type="checkbox" id="tg-auto"> approve tools from the phone without asking</label>
+        <h4>Gmail (read-only)</h4>
+        <label class="row"><input type="checkbox" id="gm-on"> enabled</label>
+        <input id="gm-addr" placeholder="you@gmail.com" autocomplete="off">
+        <input id="gm-pass" type="password" placeholder="Google app password (16 chars)" autocomplete="off">
+        <textarea id="gm-wl" rows="3" placeholder="allowed senders, one per line (name@site.com or @site.com)"></textarea>
+        <p class="hint" id="gm-state"></p>
+        <button type="button" class="chip on" id="int-save">Save &amp; restart</button>
+      </section>
       <section class="tabpane" data-tab="instructions">
         <h3>Custom instructions</h3>
         <p class="muted">Sent with every chat, on top of the built-in prompt.</p>

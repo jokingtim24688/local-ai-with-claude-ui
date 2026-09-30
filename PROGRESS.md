@@ -308,3 +308,6 @@ BUILD_PROMPT.md, rebuilt static/*, extra skills. Backend gained /api/tree,
 
 ## PIVOT 26 — images + vision fallback + context control
 vision.py, context.py, num_ctx 16384, KV q4_0, Image chip/paste/drop in composer, SSE image_note. See CONTINUE_HERE.md redo recipe.
+
+## PIVOT 27 — Telegram + Gmail + scraper
+See CONTINUE_HERE.md redo recipe.

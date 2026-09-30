@@ -12,7 +12,7 @@ interpreter. This is the "actual compiled exe".
 Windows: the first run downloads a C compiler (MinGW) automatically.
 macOS: needs Xcode command line tools once:  xcode-select --install
 Build on each OS for that OS (a Windows build can't run on a Mac and vice versa).
-Do it in a CLEAN venv (flask ollama pywebview psutil nuitka) so it stays small.
+Do it in a CLEAN venv (flask ollama pywebview psutil trafilatura nuitka) so it stays small.
 """
 import os
 import subprocess
@@ -27,6 +27,10 @@ DATA = [
     "--include-data-dir=assets=assets",
     "--include-data-dir=skills=skills",
     "--include-data-files=branding.json=branding.json",
+    "--include-package=trafilatura", "--include-package-data=trafilatura",   # scraper
+    "--include-package=courlan", "--include-package=htmldate", "--include-package=justext",
+    "--include-module=scraper", "--include-module=integrations", "--include-module=telegram_bridge",
+    "--include-module=gmail_listener", "--include-module=vision", "--include-module=context",
 ]
 if WIN:
     PLATFORM = [

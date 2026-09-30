@@ -1,3 +1,18 @@
+# >>> PIVOT 27 — Telegram bot + Gmail watcher + scraper — DONE (2026-09-30) <<<
+Redo recipe:
+1. scraper.py (trafilatura -> markdown; SSRF guard; optional Playwright render) + web.py tool `web_scrape`
+   (only on /web turns). Chosen over crawl4ai/Firecrawl/Scrapy: tiny, pure Python, builds cleanly.
+2. integrations.py: NightCrew-data/integrations.json (gitignored): telegram{token,owner_id,pair_code,model,auto},
+   gmail{address,app_password,whitelist,interval}. Secrets masked in /api/integrations (POST needs X-NC:1).
+3. telegram_bridge.py: long-poll; owner-locked (pair via `/pair <6-digit code>`, strangers get silence);
+   runs the real /api/chat loop via app.test_client; approvals = inline buttons; writes files back as documents;
+   /new /web /auto /model /files /open /mail /status.
+4. gmail_listener.py: IMAP read-only (BODY.PEEK), whitelist senders only, notifies owner on Telegram;
+   mail text is NEVER executed as instructions.
+5. app.py startup_integrations() (also called in desktop.serve); UI Customize > Integrations tab.
+6. Installers: requirements (trafilatura, httpx), install.sh/.bat offer Playwright, builds include the packages.
+Not built yet: MCP per-prompt routing, doc editing, web automation w/ vault, handwriting, installer .iss.
+
 # >>> PIVOT 26 — images + vision fallback + context control — DONE (2026-09-30) <<<
 Redo recipe (if lost): 
 1. vision.py: is_vision(name), save_image -> workspace/attachments/, describe() via small vision model

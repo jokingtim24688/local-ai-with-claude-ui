@@ -23,6 +23,7 @@ import paths
 import apps
 import engines
 import vision
+import integrations
 import context
 
 try:
@@ -322,6 +323,29 @@ def api_settings():
 @app.post("/api/settings")
 def api_settings_save():
     return jsonify(save_settings(request.get_json(force=True) or {}))
+
+
+# ---- integrations: Telegram bot + Gmail watcher -----------------------------
+
+def startup_integrations() -> None:
+    try:
+        integrations.start_all(sys.modules[__name__])
+    except Exception as e:
+        print(f"integrations: {e}")
+
+
+@app.get("/api/integrations")
+def api_integrations():
+    return jsonify({"config": integrations.masked(), "status": integrations.status()})
+
+
+@app.post("/api/integrations")
+def api_integrations_save():
+    if request.headers.get("X-NC") != "1":                     # same guard as /api/workspace
+        return jsonify({"error": "missing X-NC header"}), 403
+    integrations.update(request.get_json(force=True) or {})
+    startup_integrations()
+    return jsonify({"config": integrations.masked(), "status": integrations.status()})
 
 
 # ---- creative apps: Blender / Unreal / Roblox ------------------------------
@@ -1758,6 +1782,7 @@ def main():
     init_workspace()
     seed_default_subagents()
     startup_apps()
+    startup_integrations()
 
     print(f"workdir (sandbox): {tools.SANDBOX}")
     print(f"skills: {CFG['skills']}  ({len(tools.SKILLS)} loaded)")

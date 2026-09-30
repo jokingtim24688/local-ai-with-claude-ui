@@ -33,7 +33,12 @@ def web_fetch(url: str) -> str:
     return text[:4000]
 
 
-REGISTRY = {"web_search": web_search, "web_fetch": web_fetch}
+def web_scrape(url: str, render: bool = False) -> str:
+    import scraper
+    return scraper.scrape(url, bool(render))
+
+
+REGISTRY = {"web_search": web_search, "web_fetch": web_fetch, "web_scrape": web_scrape}
 
 SCHEMAS = [
     {"type": "function", "function": {
@@ -42,6 +47,11 @@ SCHEMAS = [
     {"type": "function", "function": {
         "name": "web_fetch", "description": "Fetch a URL and return readable text.",
         "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
+    {"type": "function", "function": {
+        "name": "web_scrape",
+        "description": "Scrape a page into clean markdown (better than web_fetch). Set render=true only for JavaScript-only pages.",
+        "parameters": {"type": "object", "properties": {"url": {"type": "string"}, "render": {"type": "boolean"}},
+                       "required": ["url"]}}},
 ]
 
 

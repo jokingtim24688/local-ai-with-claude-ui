@@ -39,6 +39,8 @@ app.py         Flask backend: chat SSE + agent tool-loop, all /api/* routes
 toolcalls.py   recovers tool calls small models TYPE as JSON text; hides that JSON
 skill_router.py dynamic skill loader: frontmatter `domain`/`triggers` -> routed skills
 exec_tags.py   ```<lang> file=<path> run``` blocks -> write_file + engine step
+scraper.py     web_scrape tool (trafilatura -> markdown, SSRF-guarded)
+integrations.py + telegram_bridge.py + gmail_listener.py: owner-locked Telegram bot, read-only Gmail watcher
 vision.py      image attachments: save to workspace/attachments, native or described-by-vision-model
 context.py     collapse old tool output, trim old turns
 engines.py     OpenSCAD, UEFN/Verse (lint, islands), terrain heightmaps + scatter,

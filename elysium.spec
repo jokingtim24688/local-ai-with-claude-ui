@@ -7,7 +7,7 @@
 #   pip install pyinstaller
 #   pyinstaller elysium.spec
 import sys
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
 APP = "Night Crew"
 
@@ -20,11 +20,18 @@ datas = [
     ("branding.json", "."),
     ("skills", "skills"),          # default skills, seeded to user data on first run
 ]
+for _pkg in ("trafilatura", "courlan", "htmldate", "justext", "tld", "certifi"):   # scraper data files
+    try:
+        datas += collect_data_files(_pkg)
+    except Exception:
+        pass
 
 hiddenimports = (
     collect_submodules("webview")
     + collect_submodules("flask")
-    + ["ollama"]
+    + ["ollama", "httpx", "trafilatura", "scraper", "integrations", "telegram_bridge",
+       "gmail_listener", "vision", "context"]
+    + collect_submodules("trafilatura")
 )
 
 a = Analysis(
