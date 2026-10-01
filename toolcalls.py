@@ -73,6 +73,45 @@ def _objects(text: str):
             i += 1
 
 
+CALL_KEYS = ("arguments", "parameters", "args")
+TAGS = re.compile(r"</?tool_call>|</?function[^>]*>|\bfunctions\.\w+")
+EMPTY_FENCE = re.compile(r"```[a-zA-Z]*\s*```")
+FENCE = re.compile(r"```[a-zA-Z]*")
+
+
+def _is_call_shaped(obj) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    if "function" in obj and isinstance(obj["function"], dict):
+        obj = obj["function"]
+    return isinstance(obj.get("name") or obj.get("tool"), str) and any(k in obj for k in CALL_KEYS)
+
+
+def visible_text(text: str) -> str:
+    """The prose a user should SEE: every tool-call-shaped JSON object removed, whether or
+    not the tool exists, plus the wrapper tags/fences models put around them. A model that
+    only typed a call leaves "" — the user never gets raw JSON in the chat."""
+    spans = []
+    for obj, a, b in _objects(text):
+        items = obj if isinstance(obj, list) else [obj]
+        if items and all(_is_call_shaped(it) for it in items):
+            spans.append((a, b))
+    out = text
+    for a, b in reversed(spans):
+        out = out[:a] + out[b:]
+    out = TAGS.sub("", out)
+    cut = CALL_START.search(out)          # a call the stream stopped in the middle of
+    if cut and out.count("{", cut.start()) > out.count("}", cut.start()):
+        out = out[:cut.start()]
+    if spans:
+        # the call sat inside ```json … ```: drop the fence it left behind, but never
+        # touch the fences around a real code block the model also wrote
+        out = EMPTY_FENCE.sub("", out)
+        if len(FENCE.findall(out)) % 2:
+            out = FENCE.sub("", out, count=1) if out.lstrip().startswith("```") else out[::-1].replace("```"[::-1], "", 1)[::-1]
+    return out.strip()
+
+
 def extract_calls(text: str, known: set) -> tuple[list, str]:
     """-> (calls in Ollama's shape, leftover prose). Only names in `known` (after
     aliasing) count, so a JSON example in a normal answer isn't executed."""
@@ -95,10 +134,4 @@ def extract_calls(text: str, known: set) -> tuple[list, str]:
             if name in known and isinstance(args, dict):
                 calls.append({"function": {"name": name, "arguments": args}})
                 spans.append((a, b))
-    if not calls:
-        return [], text
-    rest = text
-    for a, b in reversed(spans):
-        rest = rest[:a] + rest[b:]
-    rest = re.sub(r"</?tool_call>|```(?:json)?|</?function[^>]*>", "", rest).strip()
-    return calls, rest
+    return calls, visible_text(text)

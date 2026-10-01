@@ -234,8 +234,9 @@ async function loadModels() {
     const pick = all.filter((m) => /hermes|dolphin|qwen|llama3|phi4|mistral|gemma3|deepseek|granite|coder/i.test(m)
       && !/embed/i.test(m));
     state.models = pick.length ? pick : all;
+    state.modelTools = d.tools || {};
     modelSel.innerHTML = state.models.length
-      ? state.models.map((m) => `<option>${esc(m)}</option>`).join("")
+      ? state.models.map((m) => `<option value="${esc(m)}">${esc(m)}${state.modelTools[m] === false ? " · no native tools" : ""}</option>`).join("")
       : `<option>${esc(d.error || "no model yet — ollama pull hermes3:8b")}</option>`;
     $("#sa-model").innerHTML = `<option value="">worker model</option>` +
       state.models.map((m) => `<option>${esc(m)}</option>`).join("");

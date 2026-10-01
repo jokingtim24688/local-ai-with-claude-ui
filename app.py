@@ -54,6 +54,9 @@ PENDING: dict[str, dict] = {}
 SYSTEM_PROMPT = """You are the LEAD of Night Crew, running on the user's own computer with
 REAL tools. Never tell the user how to do something you can do with a tool — do it.
 Call tools through the tool-calling interface, never by typing JSON in your reply.
+When you don't need a tool, answer in plain sentences — never JSON, never a code fence
+around your whole reply. If the user asks you to do something, do it with a tool, then
+say what you did in one or two plain sentences.
 
 Which tool:
 - open / close / restart an app ("open Spotify", "restart Discord") -> app_control
@@ -524,14 +527,48 @@ def api_open_url():
     return jsonify({"ok": True})
 
 
+_CAPS: dict = {}
+
+
+def model_caps(client, name: str):
+    """['completion','tools','vision',...] from `ollama show`, or None if this Ollama is too
+    old to say. Only successful answers are cached."""
+    if name in _CAPS:
+        return _CAPS[name]
+    try:
+        r = client.show(name)
+        caps = r.get("capabilities") if isinstance(r, dict) else getattr(r, "capabilities", None)
+        if caps is not None:
+            _CAPS[name] = list(caps)
+            return _CAPS[name]
+    except Exception:
+        pass
+    return None
+
+
+def text_tool_note(schemas: list) -> str:
+    """For models with no native tool calling: describe the tools in the prompt and ask for
+    one JSON line; toolcalls.extract_calls turns that back into a real call."""
+    rows = []
+    for x in schemas[:40]:
+        f = x["function"]
+        props = ", ".join((f.get("parameters") or {}).get("properties", {}).keys())
+        rows.append(f"- {f['name']}({props}): {(f.get('description') or '')[:90]}")
+    return ("\n\nThis model cannot use native tool calling. To use a tool, reply with ONLY one line "
+            'of JSON and nothing else: {"name": "<tool>", "arguments": {...}}. When you get the '
+            "result, answer in plain sentences. Tools:\n" + "\n".join(rows))
+
+
 @app.get("/api/models")
 def api_models():
     if ollama is None:
         return jsonify({"models": [], "error": "ollama python lib not installed"})
     try:
-        data = ollama.Client().list()
-        names = [m.get("model") or m.get("name") for m in data.get("models", [])]
-        return jsonify({"models": [n for n in names if n]})
+        client = ollama.Client()
+        data = client.list()
+        names = [n for n in (m.get("model") or m.get("name") for m in data.get("models", [])) if n]
+        return jsonify({"models": names, "tools": {n: ("tools" in c) for n in names
+                                                    if (c := model_caps(client, n)) is not None}})
     except Exception as e:
         return jsonify({"models": [], "error": str(e)})
 
@@ -1312,11 +1349,17 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
     # file tools + load_skill + this chat's connectors. No memory/bus/board/apps: MAIN owns those.
     schemas = [x for x in tools.SCHEMAS if x["function"]["name"] != "remember"] + mcp_schemas
     log, touched, acc = [], [], ""
+    native = True
+    caps = model_caps(client, model)
+    if caps is not None and "tools" not in caps:       # no tool template: describe tools in text
+        native = False
+        msgs[0]["content"] += text_tool_note(schemas)
     for _ in range(10):
         acc = ""
         calls = []
         for chunk in client.chat(model=model, messages=msgs, keep_alive=keep,
-                                 options={"num_ctx": ctx_size()}, tools=schemas, stream=True):
+                                 options={"num_ctx": ctx_size()}, tools=schemas if native else None,
+                                 stream=True):
             m = chunk.get("message", {})
             acc += m.get("content") or ""
             calls += m.get("tool_calls") or []
@@ -1704,7 +1747,14 @@ def api_chat():
                         "name": {"type": "string"}, "task": {"type": "string"}},
                         "required": ["name", "task"]}}}]
 
+        native = True                  # False: model has no tool template -> tools described in text
+        if schemas and (model_caps(client, model) is not None) and "tools" not in model_caps(client, model):
+            native = False
+            msgs[0]["content"] += text_tool_note(schemas)
         retries = 0
+        shown = ""                     # visible prose the UI has received this turn
+        dup = ""                       # prose shown before a nudge, to not repeat it after
+        quiet = False                  # after a nudge: hold everything back, dedupe at the end
         try:
             for _ in range(12):  # tool-loop cap
                 acc = ""
@@ -1714,7 +1764,8 @@ def api_chat():
                 context.collapse_tool_outputs(msgs)                  # old tool output -> head/tail
                 context.trim_history(msgs, ctx_size() * 3)          # ~3 chars/token budget
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
-                                    options={"num_ctx": ctx_size()}, tools=schemas, stream=True)
+                                    options={"num_ctx": ctx_size()}, tools=schemas if native else None,
+                                    stream=True)
                 for chunk in resp:
                     msg = chunk.get("message", {})
                     piece = msg.get("content") or ""
@@ -1724,7 +1775,7 @@ def api_chat():
                         # instead of printing it, then run it as a real call below
                         if held is None and acc.strip():
                             held = toolcalls.looks_like_call(acc)     # None = can't tell yet
-                        if held is False:
+                        if held is False and not quiet:
                             # prose first, then a JSON "call"? stop streaming where it starts
                             end = toolcalls.safe_prefix(acc, sent)
                             if end > sent:
@@ -1737,38 +1788,46 @@ def api_chat():
 
                 if not calls and schemas and acc.strip():
                     # code the model wrote as execution-tag blocks -> write (+ run) it
-                    tagged = exec_tags.to_calls(acc, set(apps.REGISTRY) | {"write_file"})
-                    if tagged:
-                        if acc[sent:]:
-                            yield sse("token", acc[sent:])
-                        sent = len(acc)
-                        calls = tagged
+                    calls = exec_tags.to_calls(acc, set(apps.REGISTRY) | {"write_file"}) or calls
                 if not calls and schemas and acc.strip():
                     known = {x["function"]["name"] for x in schemas}
-                    found, rest = toolcalls.extract_calls(acc, known)
+                    found, _ = toolcalls.extract_calls(acc, known)
                     if found:
                         calls = found
-                        if rest[sent:]:                      # prose around the JSON
-                            yield sse("token", rest[sent:])
-                        acc = rest
-                    elif held is not False and toolcalls.invented_call(acc) and retries < 2:
+                    elif toolcalls.invented_call(acc) and retries < 2:
                         # it "called" a tool that doesn't exist: tell it, don't show the JSON
                         retries += 1
+                        quiet = True
+                        d = toolcalls.visible_text(acc[:sent])
+                        shown, dup = shown + d, d or dup     # keep what the UI already showed
                         msgs.append({"role": "assistant", "content": acc})
                         msgs.append({"role": "user", "content":
                                      f"(system) '{toolcalls.invented_call(acc)}' is not a tool. Either "
                                      "use one of your real tools through tool calling, or just answer "
                                      "me in plain words."})
                         continue
-                    elif held is not False:                  # it wasn't a call after all
-                        yield sse("token", acc[sent:])
-                elif held is not False and acc[sent:]:
-                    yield sse("token", acc[sent:])
+
+                # Show prose ONLY — tool-call JSON the model typed never reaches the chat.
+                vis = toolcalls.visible_text(acc)
+                live = toolcalls.visible_text(acc[:sent]) if sent else ""
+                out = vis[len(live):] if live and vis.startswith(live) else vis
+                if dup:                                      # a retry that repeated itself
+                    out = out[len(dup):] if out.startswith(dup) else ("" if out in dup else out)
+                if out.strip():
+                    yield sse("token", out)
+                shown += live + out
+                dup, quiet = "", False
 
                 msgs.append({"role": "assistant", "content": acc,
                              "tool_calls": calls or None})
 
                 if not calls:
+                    if not shown.strip() and acc.strip():
+                        # the model only ever typed tool-call JSON: say so instead of a blank reply
+                        yield sse("token", f"({model} kept typing tool calls as text instead of "
+                                           "answering. Pick a stronger lead in the model picker — "
+                                           "qwen3:4b, qwen2.5:7b or hermes3:8b — and leave the small "
+                                           "coder model as the worker.)")
                     break
 
                 for tc in calls:

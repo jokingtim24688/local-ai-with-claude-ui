@@ -1,3 +1,13 @@
+# >>> PIVOT 30 — chat-output fix + tool-capability detection (2026-10-01) <<<
+1. toolcalls.visible_text(): tool-call JSON a small model TYPES never reaches the chat (also fixes
+   duplicated prose after a nudge, half-streamed calls, blank replies). tests_chat_output.py guards it.
+2. app.py: model_caps() = `ollama show` capabilities; /api/models returns {tools:{model:bool}};
+   picker labels "· no native tools". A lead/worker WITHOUT tools gets text_tool_note() (tools listed in
+   the prompt, one JSON line to call) and extract_calls() runs it, so any community model can drive apps.
+3. SYSTEM_PROMPT: answer in plain sentences, never JSON.
+Not verified: which abliterated tags exist (ollama.com blocked in the sandbox) — user picks on their PC.
+Suspect for garbled 3B output: OLLAMA_KV_CACHE_TYPE=q4_0 default (set env to q8_0 to override).
+
 # >>> PIVOT 29 — our own MCP server per app + live bridges — DONE (2026-09-30) <<<
 Redo recipe:
 1. mcp_servers/core.py = tiny stdio JSON-RPC MCP server (no SDK; schemas from the Python signature;
