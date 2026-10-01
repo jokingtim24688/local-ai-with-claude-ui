@@ -565,11 +565,12 @@ function wireCodeCopy() {
 /* ---------- worker model ---------- */
 function paintWorkerSelect() {
   const sel = $("#worker-model"); if (!sel) return;
-  const want = state.workerModel || "qwen2.5-coder:3b";
-  const opts = state.models.includes(want) ? state.models : [want, ...state.models];
-  sel.innerHTML = opts.map((m) => `<option ${m === want ? "selected" : ""}>${esc(m)}</option>`).join("");
-  $("#worker-hint").textContent = state.models.includes(want)
-    ? "writes the first drafts" : `not pulled yet: ollama pull ${want}`;
+  const want = state.workerModel || "";                 // "" = same model as the lead
+  const opts = want && !state.models.includes(want) ? [want, ...state.models] : state.models;
+  sel.innerHTML = `<option value="" ${want === "" ? "selected" : ""}>same as the lead (one model)</option>` +
+    opts.map((m) => `<option value="${esc(m)}" ${m === want ? "selected" : ""}>${esc(m)}</option>`).join("");
+  $("#worker-hint").textContent = want === "" ? "one model does everything: least RAM, no swapping"
+    : state.models.includes(want) ? "writes the first drafts" : `not pulled yet: ollama pull ${want}`;
 }
 
 /* ---------- apps (Blender / Unreal / Roblox) ---------- */
