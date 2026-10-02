@@ -1424,6 +1424,7 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
     # file tools + load_skill + this chat's connectors. No memory/bus/board/apps: MAIN owns those.
     schemas = [x for x in tools.SCHEMAS if x["function"]["name"] != "remember"] + mcp_schemas
     log, touched, acc = [], [], ""
+    seen_calls: dict = {}
     native = True
     caps = model_caps(client, model)
     if caps is not None and "tools" not in caps:       # no tool template: describe tools in text
@@ -1454,6 +1455,14 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
                     args = json.loads(args)
                 except Exception:
                     args = {}
+            sig = nm + json.dumps(args, sort_keys=True, default=str)
+            seen_calls[sig] = seen_calls.get(sig, 0) + 1
+            if seen_calls[sig] > 1:          # same call again: it cannot return anything new
+                r = (f"(already called {nm} with these exact arguments — nothing changed. "
+                     "Stop repeating it and finish the job.)")
+                log.append(f"{nm} (repeat ignored)")
+                msgs.append({"role": "tool", "content": r})
+                continue
             if nm in mcp_index:
                 sv, tn = mcp_index[nm]
                 r = C.call_tool(sv, tn, args)
@@ -1827,6 +1836,8 @@ def api_chat():
             native = False
             msgs[0]["content"] += text_tool_note(schemas)
         retries = 0
+        done_calls: dict = {}          # (tool, args) -> times called this turn, to break loops
+        loop_strikes = 0               # how often it ignored "stop repeating that call"
         shown = ""                     # visible prose the UI has received this turn
         dup = ""                       # prose shown before a nudge, to not repeat it after
         quiet = False                  # after a nudge: hold everything back, dedupe at the end
@@ -1834,6 +1845,7 @@ def api_chat():
             for _ in range(12):  # tool-loop cap
                 acc = ""
                 calls = []
+                looping = False        # set when the model repeats one call over and over
                 held = None            # None = undecided, True = looks like a text tool call
                 sent = 0               # chars of acc already streamed to the UI
                 context.collapse_tool_outputs(msgs)                  # old tool output -> head/tail
@@ -1928,6 +1940,19 @@ def api_chat():
                             args = {}
                     yield sse("tool_call", {"name": name, "args": args})
 
+                    # Small models get stuck repeating one call (e.g. `remember` with the same
+                    # note). Running it again cannot change anything, so answer it from here.
+                    sig = name + json.dumps(args, sort_keys=True, default=str)
+                    done_calls[sig] = done_calls.get(sig, 0) + 1
+                    if done_calls[sig] > 1:
+                        result = (f"(already called {name} with exactly these arguments this turn — "
+                                  "the result has not changed. Do NOT call it again: answer the user "
+                                  "in plain sentences now.)")
+                        yield sse("tool_result", {"name": name, "result": result})
+                        msgs.append({"role": "tool", "content": result})
+                        looping = True              # one warning is enough, then force an answer
+                        continue
+
                     allowed, _ = yield from gate(name, args, ask)
                     bus_r = dispatch_bus(name, args, "main")
                     task_r = dispatch_tasks(name, args, "main") if bus_r is None else None
@@ -1969,6 +1994,18 @@ def api_chat():
 
                     yield sse("tool_result", {"name": name, "result": result})
                     msgs.append({"role": "tool", "content": result})
+
+                if looping:              # it repeated a call: warn once, then end the turn
+                    loop_strikes += 1
+                    if loop_strikes > 1:
+                        if not shown.strip():
+                            yield sse("token", f"({model} kept repeating the same tool call instead "
+                                               "of answering. The work above ran once — nothing was "
+                                               "repeated. Ask again, or pick a stronger lead.)")
+                        break
+                    msgs.append({"role": "user", "content":
+                                 "(system) Stop calling tools. Answer me now in plain sentences, "
+                                 "using what the tools already returned."})
         except Exception as e:
             yield sse("error", str(e))
         try:

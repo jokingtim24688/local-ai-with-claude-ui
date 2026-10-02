@@ -1,3 +1,10 @@
+# >>> PIVOT 33 — repeated-tool-call loop (2026-10-02) <<<
+qwen3-abl called `remember` with the SAME note 9+ times (user screenshot) until the 12-round
+cap. Now done_calls/seen_calls key on tool+args: run once, 2nd time returns a canned
+"nothing changed, answer now", and `looping` + loop_strikes ends the turn after one warning
+(the check sits AFTER the dispatch loop — before it, the flag was always still False).
+Same guard in _run_subagent. Verified: 1 real call, <=3 bubbles, never a blank reply.
+
 # >>> PIVOT 32 — silent turns on thinking models (2026-10-02) <<<
 Qwen3 lead returned NOTHING in the UI: the loop only read message.content, and the
 "blank reply" notice was gated behind `acc.strip()`, so a turn with thinking-only output

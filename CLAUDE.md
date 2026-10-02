@@ -105,6 +105,10 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   Epic Games Launcher, which needs the user's Epic sign-in once), then both start
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
+- **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
+  (classically `remember`). The same (tool, args) is executed ONCE per turn; a repeat returns
+  "already called, nothing changed — answer now", and a second repeat ends the turn with a
+  note. Workers have the same guard. Nothing is ever run twice.
 - **Thinking models** (Qwen3 and friends): `think` is sent ONLY to models whose Ollama
   capabilities list `thinking` (sending it to others makes Ollama reject the request), and
   it defaults to OFF (setting `think`, toggle in Customize -> Apps) because a thinking model
