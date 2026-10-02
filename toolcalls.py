@@ -135,3 +135,31 @@ def extract_calls(text: str, known: set) -> tuple[list, str]:
                 calls.append({"function": {"name": name, "arguments": args}})
                 spans.append((a, b))
     return calls, visible_text(text)
+
+
+# A model with no tools run this turn still says "I've created your mod". These spot that
+# claim so the chat loop can mark it unverified — a prompt rule alone does not hold.
+DID_IT = [
+    re.compile(r"\bi(?:'ve|\s+have)?\s+(?:just\s+|now\s+)?(?:created|built|made|written|wrote|"
+               r"added|compiled|fixed|implemented|generated|installed|set\s+up|saved|updated|"
+               r"deleted|removed)\b", re.I),
+    re.compile(r"\b(?:has|have|is)\s+been\s+(?:created|built|made|written|added|compiled|"
+               r"generated|saved|updated|deleted|removed)\b", re.I),
+    re.compile(r"\byour\s+\w+\s+(?:is|are)\s+(?:now\s+)?(?:ready|complete|created|built|done)\b", re.I),
+    re.compile(r"\b(?:successfully|finished)\s+(?:created|built|compiled|generated|added|wrote|"
+               r"written|installed|set\s+up)\b", re.I),
+]
+# "I would create…", "to create…", "you can build…" are plans, not claims
+NOT_A_CLAIM = re.compile(r"\b(?:would|should|could|can|will|going to|plan to|let me|i'll|to)\s+\w{0,12}\s*"
+                         r"(?:creat|build|mak|writ|add|compil|generat|instal)", re.I)
+
+
+def claims_work_done(text: str) -> bool:
+    """True if the text says work was COMPLETED (not proposed)."""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("("):            # our own notes
+            continue
+        if any(p.search(s) for p in DID_IT) and not NOT_A_CLAIM.search(s):
+            return True
+    return False

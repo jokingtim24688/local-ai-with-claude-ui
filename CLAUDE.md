@@ -13,7 +13,9 @@ pip install -r requirements.txt          # flask, ollama, pywebview, psutil, (mc
 python desktop.py                         # native window; auto-starts `ollama serve`
 python app.py                             # backend only, browser at :5173
 ```
-**Auto-updating shortcut:** `python make_shortcut.py` once -> Desktop + Start-menu
+**Auto-updating shortcut** (closes any Night Crew already running first, via
+`launcher.close_running()` — two copies would fight over the port and chats.json):
+`python make_shortcut.py` once -> Desktop + Start-menu
 "Night Crew" (Windows) / `~/Applications/Night Crew.app` (macOS). It runs
 `launcher.py`: git fetch + fast-forward (local edits stashed, re-applied only if clean,
 never conflict markers), pip install when requirements.txt changed, then desktop.py;
@@ -110,8 +112,12 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   gradlew stops at the workspace root; `delete_file(path, recursive)` refuses the workspace
   itself. To build a real project the user points the workspace at it (IDE -> PC -> Use).
   Reading (read_file/list_dir/glob/grep) may still reach registered project folders. All gated.
-- The lead must never claim it built/compiled/created anything unless a tool call in that
-  conversation returned success — it hallucinated finishing a Minecraft mod otherwise.
+- **Unverified "I built it" is flagged mechanically.** The prompt rule alone did not hold
+  (an 8B lead kept claiming it finished a Minecraft mod). The loop tracks `ran_ok` (any tool
+  result not starting error/FAILED/blocked); if nothing succeeded and
+  `toolcalls.claims_work_done(reply)` matches a completion claim ("I have created…",
+  "has been built", "your mod is ready"), a ⚠ line is appended saying it is not true.
+  Plans ("I would create…", "to build this, run…") never match.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
   (classically `remember`). The same (tool, args) is executed ONCE per turn; a repeat returns
   "already called, nothing changed — answer now", and a second repeat ends the turn with a

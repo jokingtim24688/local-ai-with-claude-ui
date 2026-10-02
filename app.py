@@ -1847,6 +1847,7 @@ def api_chat():
             msgs[0]["content"] += text_tool_note(schemas)
         retries = 0
         done_calls: dict = {}          # (tool, args) -> times called this turn, to break loops
+        ran_ok = False                 # did ANY tool actually succeed this turn?
         loop_strikes = 0               # how often it ignored "stop repeating that call"
         shown = ""                     # visible prose the UI has received this turn
         dup = ""                       # prose shown before a nudge, to not repeat it after
@@ -1921,6 +1922,12 @@ def api_chat():
                              "tool_calls": calls or None})
 
                 if not calls:
+                    # it says it finished something, but nothing actually ran: say so plainly
+                    if ran_ok is False and toolcalls.claims_work_done(shown):
+                        yield sse("token", "\n\n⚠ No tool call succeeded this turn, so nothing was "
+                                           "actually created, changed or compiled — the claim above "
+                                           "is not true. Ask it to use its tools (write_file, gradle, "
+                                           "run_command) and check the workspace yourself.")
                     if not shown.strip():
                         # a turn must never end with an empty bubble: say what happened
                         if thought.strip() and not acc.strip():
@@ -2002,6 +2009,8 @@ def api_chat():
                     else:
                         result = tools.run_tool(name, args)
 
+                    if not str(result).lstrip().startswith(("error", "FAILED", "blocked")):
+                        ran_ok = True
                     yield sse("tool_result", {"name": name, "result": result})
                     msgs.append({"role": "tool", "content": result})
 

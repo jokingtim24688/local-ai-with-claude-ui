@@ -1,3 +1,11 @@
+# >>> PIVOT 36 — mechanical hallucination flag + updater closes dupes (2026-10-02) <<<
+1. toolcalls.claims_work_done(): regex set for completion claims, with a NOT_A_CLAIM guard so
+   plans ("I would create", "to build this, run") don't match. app.py tracks ran_ok (any tool
+   result not error/FAILED/blocked); claim + nothing succeeded -> a ⚠ line is appended to the
+   reply. 12 phrase cases + 4 end-to-end turns tested; regression case added.
+2. launcher.close_running(): psutil, terminate-then-kill any other "Night Crew"/desktop.py in
+   THIS folder (never self or a parent) before launch(), so an update leaves one window.
+
 # >>> PIVOT 35 — delete_file + workspace-only execution (2026-10-02) <<<
 User: deletes and commands must stay in the workspace (they point the workspace at their
 project via IDE -> PC -> Use). run_command cwd now goes through _jail (not _read_jail),

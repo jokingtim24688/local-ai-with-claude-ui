@@ -99,7 +99,51 @@ def update(status) -> str:
     return note
 
 
+def close_running(log_to=lambda s: None) -> int:
+    """Close any Night Crew already running, so an update never leaves two windows (and two
+    apps fighting over the same port and chats.json). Asks politely first, then forces it."""
+    try:
+        import psutil
+    except Exception:
+        return 0
+    me = os.getpid()
+    try:
+        mine = {me} | {p.pid for p in psutil.Process(me).parents()}
+    except Exception:
+        mine = {me}
+    doomed = []
+    for p in psutil.process_iter(["pid", "name", "cmdline", "exe"]):
+        if p.info["pid"] in mine:
+            continue
+        try:
+            name = (p.info["name"] or "").lower()
+            cmd = " ".join(p.info["cmdline"] or []).lower()
+            ours = ("night crew" in name or "nightcrew" in name
+                    or ("desktop.py" in cmd and HERE.lower() in cmd.lower()))
+            if ours:
+                doomed.append(p)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    if not doomed:
+        return 0
+    log_to(f"closing {len(doomed)} running copy…")
+    for p in doomed:
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    gone, alive = psutil.wait_procs(doomed, timeout=6)
+    for p in alive:                      # still there: stop pretending
+        try:
+            p.kill()
+        except Exception:
+            pass
+    log(f"closed {len(doomed)} running instance(s)")
+    return len(doomed)
+
+
 def launch(note: str) -> None:
+    close_running()
     py = sys.executable
     if WIN and py.lower().endswith("python.exe"):              # no console window
         w = py[:-10] + "pythonw.exe"

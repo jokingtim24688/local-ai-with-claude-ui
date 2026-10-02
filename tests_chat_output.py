@@ -69,7 +69,8 @@ CASES = [
                                        '{"name": "world", "arguments": {"": "hello!"}}', 'ok']),
     ("plain greeting", ['Hey! What are we building tonight?']),
     ("real code block is kept", ['Here you go:\n```python\nprint("hi")\n```']),
-    ("thinking only, never answers", [""]),      # the model's content is empty (Qwen3 thinking)
+    ("thinking only, never answers", [""]),
+    ("claims it built a mod with no tools", ["I have created your Minecraft mod with ores and mobs."]),      # the model's content is empty (Qwen3 thinking)
     ("exec tag writes a file", ['Here is the model:\n```openscad file=models/box.scad\ncube([10,10,10]);\n```',
                                 'Saved it.']),
 ]
@@ -82,6 +83,9 @@ if __name__ == "__main__":
         half = body[:len(body) // 2].strip()
         if half and body.count(half) > 1:
             FAILS.append(f"{name} (shown twice)")
+    # an unbacked "I built it" must be flagged
+    if "⚠" not in out["claims it built a mod with no tools"]:
+        FAILS.append("unverified completion claim not flagged")
     # a turn must never end silent
     for name, seen in out.items():
         if not seen.strip():
