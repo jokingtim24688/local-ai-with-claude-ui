@@ -88,6 +88,12 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   back text that starts like a call (or a mid-answer `{"name":`), runs it via
   toolcalls.extract_calls, and nudges the model when it invents a tool. The lead's tool
   menu is deliberately lean (no bus/task/avatar tools) and its prompt short.
+- **Typos route anyway**: `skill_router.score()` returns `(exact, fuzzy)` — exact always wins,
+  fuzzy only decides when nothing matched properly. A fuzzy hit needs the SAME FIRST LETTER,
+  a length within 2 and ratio >= 0.80, which is what stops ordinary words colliding with
+  triggers ("make" was matching "cmake", so every "make a cube" looked like C++).
+  `tests_routing.py` locks this down. The prompt also tells the lead to read what the user
+  MEANT and never ask them to rephrase.
 - **Engine bridge** (docs/ENGINE_BRIDGE.md): 3B models answer with execution tags or JSON
   plans (kinds ue_layout/obby/island/terrain) instead of big API code; the lead's prompt
   gets the routed `# ACTIVE SKILL` and a tool menu filtered to that domain

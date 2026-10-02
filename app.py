@@ -59,6 +59,19 @@ When you don't need a tool, answer in plain sentences — never JSON, never a co
 around your whole reply. If the user asks you to do something, do it with a tool, then
 say what you did in one or two plain sentences.
 
+ACT, DON'T ASK. The user should never have to tell you to run a command. Work out the
+steps yourself and run them in order — write the file, then compile it, then report what
+the compiler actually said. Only stop to ask when a choice would destroy work you cannot
+get back, or when two sensible answers would send you down completely different paths.
+"Should I run it?" is not a question — run it.
+
+The user types fast and makes typos. Read what they MEANT, never correct their spelling,
+and never ask them to rephrase. "compile the mod" / "complie teh mod" / "run teh gradel
+build" are all the same instruction. "java context file" means the java_context.txt that
+already exists; "the src folder" means src/ in the workspace. If a name is close to
+something real, use the real one (glob/list_dir to check) and say which you used. Only ask
+when two DIFFERENT real files or actions genuinely both fit.
+
 Which tool:
 - open / close / restart an app ("open Spotify", "restart Discord") -> app_control
 - open a website ("open google") -> open_url
@@ -73,7 +86,11 @@ Which tool:
   run_command (commands and deletes NEVER leave the workspace; to work on a project, the user
   points the workspace at it in the IDE's PC tab)
 - build a Java/Minecraft/Android project -> gradle (task "build", "runClient"), then READ the
-  errors it prints and fix the real files
+  errors it prints and fix the real files. A Fabric/Forge mod builds with gradle, NOT javac.
+  Keep going: build -> read the first error -> fix that file -> build again, until it passes
+  or the same error survives two fixes. Report the real compiler output, never a guess.
+- delete something the user names -> delete_file (recursive=true for a folder). Do it, then
+  list_dir to confirm it is gone.
 NEVER say you built, compiled, created or fixed something unless a tool call in THIS
 conversation returned success for it. If you have not run it, say exactly that and what you
 would run. Describing a plan as if it were done is a lie the user will act on.
@@ -94,6 +111,8 @@ else; when one returns, run its files and fix what's broken yourself.
 MEMORY below is what you learned before. Save new facts with remember("key: value").
 Rules:
 - Be brief. An action is done ONLY when a tool result says OK.
+- Finish the whole request before answering. "delete X and compile" = delete_file, then
+  gradle, then one sentence about both — not a description of what you are about to do.
 - Paths are relative to the workspace folder.
 - Web search exists only on turns the user started with /web.
 Skills you can load with load_skill(name): {skills}
@@ -258,7 +277,7 @@ DOMAIN_TOOLS = {
 }
 CORE_APP_TOOLS = ["app_status", "app_control", "open_url", "fetch_docs"]
 GENERAL_APP_TOOLS = ["blender_run", "openscad_render", "unreal_quick_level", "run_plan",
-                     "roblox_open", "uefn_open"]
+                     "roblox_open", "uefn_open", "gradle"]   # building is not domain-specific
 
 
 def lead_app_tools(task: str) -> list:

@@ -1,3 +1,15 @@
+# >>> PIVOT 38 — act-don't-ask prompt, typo-tolerant routing (2026-10-02) <<<
+User: "I shouldn't have to ask for a command to be run" + typos should just work.
+1. SYSTEM_PROMPT: ACT DON'T ASK (run the steps, "should I run it?" is not a question),
+   typo paragraph (read what they MEANT, never correct them, glob to resolve near-names),
+   gradle-not-javac + build->read error->fix->build loop, delete_file + confirm with list_dir,
+   "finish the whole request before answering".
+2. skill_router.score -> (exact, fuzzy) tuple so exact always beats fuzzy; _close() needs same
+   first letter + len diff <=2 + ratio >=0.80. Found by "make a cube in blendr" -> cpp
+   ("make"~"cmake"). lang-java triggers widened (mod/mods/modding/minecraft/compile/gradlew/
+   mixin). GENERAL_APP_TOOLS now includes gradle, so "compile the mod" offers it even with no
+   domain match. tests_routing.py = 17 cases, typos and correct spellings.
+
 # >>> PIVOT 37 — repeat guard was blocking real build loops (2026-10-02) <<<
 Screenshot: write_file -> `javac` came back "(already called ... this turn)" and the build
 stalled. The guard keyed only on (tool, args), so the edit-compile-edit-compile loop looked

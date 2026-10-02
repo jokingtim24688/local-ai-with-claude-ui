@@ -2,7 +2,7 @@
 name: lang-java
 description: Java apps — javac/Maven/Gradle, project layout, and Swing / JavaFX menu bars.
 domain: java
-triggers: java, javac, jar, maven, pom.xml, gradle, swing, javafx, jframe, spring, minecraft mod, forge, fabric, android, .java, jvm
+triggers: java, javac, jar, maven, pom.xml, gradle, gradlew, build.gradle, swing, javafx, jframe, spring, minecraft, minecraft mod, mod, mods, modding, forge, fabric, mixin, android, .java, jvm, compile
 ---
 # Java skill
 
