@@ -1,3 +1,15 @@
+# >>> PIVOT 42 — orbit spinner, smooth pinned scroll, proposals pushed into action <<<
+1. static/app.js bottom(): smooth scrollTo, but only when `pinned` (user within 80px of the
+   bottom) — reading back is no longer interrupted. Honours prefers-reduced-motion.
+2. showOrbit()/hideOrbit()/setOrbitLabel(): sun + 2 orbiting planets in the accent colour,
+   appended to the chat while busy, label follows the work ("running write_file…"). WAAPI,
+   not CSS keyframes (Windows animation-effects-off = prefers-reduced-motion freezes those).
+3. toolcalls.proposes_work(): "we should create…", "let's compile…", "next step is to…",
+   "here is the code:". When nothing ran and the reply only proposes, the loop pushes once
+   ("do it NOW with real tool calls") — this is the "qwen said we should create the file and
+   did nothing" case; claims_work_done deliberately ignores proposals. 16 phrase cases +
+   3 end-to-end turns + a regression case.
+
 # >>> PIVOT 41 — abliterated model installer (2026-10-02) <<<
 User wants ~20 abliterated models to rank in-app. Searched HF: most "abliterated instruct"
 hits are creative-writing merges, useless for tool calling. Shipped 10 VERIFIED ones

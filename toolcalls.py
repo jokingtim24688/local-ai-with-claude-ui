@@ -169,3 +169,31 @@ def claims_work_done(text: str) -> bool:
         if any(p.search(s) for p in DID_IT) and not NOT_A_CLAIM.search(s):
             return True
     return False
+
+
+# "We should create the file", "Let's compile it", "Next step is to delete those" — the model
+# describes the work instead of doing it. Not a lie (claims_work_done ignores these on
+# purpose), but with tools available it is still a dead turn, so the loop pushes once.
+_DO = (r"creat(?:e|ing)|build(?:ing)?|mak(?:e|ing)|writ(?:e|ing)|add(?:ing)?|compil(?:e|ing)|"
+       r"generat(?:e|ing)|install(?:ing)?|delet(?:e|ing)|remov(?:e|ing)|fix(?:ing)?|run(?:ning)?|"
+       r"set\s+up|implement(?:ing)?|sav(?:e|ing)|updat(?:e|ing)")
+PROPOSES = [
+    re.compile(rf"\b(?:we|you|i)\s*(?:'ll|'d|\s+will|\s+should|\s+can|\s+could|\s+need\s+to|"
+               rf"\s+have\s+to|\s+must|\s+am\s+going\s+to|\s+are\s+going\s+to)\s+"
+               rf"(?:now\s+|then\s+|first\s+)?(?:{_DO})\b", re.I),
+    re.compile(rf"\blet(?:'s|\s+us)\s+(?:\w+\s+){{0,2}}?(?:{_DO})\b", re.I),
+    re.compile(rf"\bnext(?:\s+step)?\s*(?:is|would\s+be)?\s*(?:,\s*)?to\s+(?:\w+\s+){{0,2}}?(?:{_DO})\b", re.I),
+    re.compile(rf"\b(?:you|we)\s+(?:can|could|should)\s+(?:then\s+)?(?:{_DO})\b", re.I),
+    re.compile(r"\b(?:here\s+is|here's)\s+(?:the|a|an)\s+(?:code|file|script|command|content)\b", re.I),
+]
+
+
+def proposes_work(text: str) -> bool:
+    """True if the reply only TALKS about doing the job."""
+    for s in SENTENCE.split(text):
+        s = s.strip()
+        if not s or s.startswith(("(", "\u26a0")):
+            continue
+        if any(p.search(s) for p in PROPOSES):
+            return True
+    return False

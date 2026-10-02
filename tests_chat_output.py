@@ -74,6 +74,7 @@ CASES = [
     ("claims it deleted files with no tools",
      ["The context.txt and java_context.txt files have been successfully deleted. The new mod "
       "file is now ready for compilation. The compilation process will generate the .jar file."]),
+    ("proposes work but never does it", ["We should create the file Main.java first."]),
     ("honest plan is not flagged", ["To build this, run gradlew build in your project folder. "
                                     "It will generate the jar."]),      # the model's content is empty (Qwen3 thinking)
     ("exec tag writes a file", ['Here is the model:\n```openscad file=models/box.scad\ncube([10,10,10]);\n```',
@@ -89,6 +90,8 @@ if __name__ == "__main__":
         if half and body.count(half) > 1:
             FAILS.append(f"{name} (shown twice)")
     # an unbacked "I built it" must be flagged
+    if "doing that now" not in out["proposes work but never does it"]:
+        FAILS.append("a proposal with no tool call was not pushed into action")
     if "Making it use its tools now" not in out["claims it deleted files with no tools"]:
         FAILS.append("no forced retry after an empty-handed claim")
     for n in ("claims it built a mod with no tools", "claims it deleted files with no tools"):

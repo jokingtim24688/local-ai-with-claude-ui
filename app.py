@@ -2048,6 +2048,20 @@ def api_chat():
                 if not calls:
                     # It says it finished something but nothing ran. Don't just warn — make it
                     # do the work: tell it plainly that it called nothing, and run one more round.
+                    # It described the job instead of doing it ("we should create the file").
+                    # Push it once; the user asked for the work, not a plan.
+                    if (ran_ok is False and forced < 1 and shown.strip()
+                            and not toolcalls.claims_work_done(shown)
+                            and toolcalls.proposes_work(shown)):
+                        forced += 1
+                        yield sse("token", "\n\n→ doing that now…\n")
+                        msgs.append({"role": "user", "content":
+                                     "(system) You described the work instead of doing it, and called "
+                                     "no tool, so nothing happened. Do it NOW with real tool calls — "
+                                     "write_file / delete_file / gradle / run_command — then tell me "
+                                     "the result. Do not describe the plan again."})
+                        shown = ""
+                        continue
                     if ran_ok is False and toolcalls.claims_work_done(shown):
                         how = (f"{len(schemas or [])} tools offered, "
                                + ("native tool calling" if native else "text tool calls"))

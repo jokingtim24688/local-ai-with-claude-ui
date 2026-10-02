@@ -145,6 +145,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   … call the tool now") and only then gives up with a ⚠. Both messages report how many tools
   were offered and whether native or text tool calling was used, so it is obvious whether the
   app or the model is at fault. Claims are judged per sentence; plans never match.
+- **Proposals are pushed into action**: `toolcalls.proposes_work()` catches "we should create
+  the file", "let's compile it", "the next step is to…", "here is the code:" — the model
+  TALKING about the job. With no tool run, the loop sends "(system) You described the work
+  instead of doing it… do it NOW" and retries once (it shares `forced` with the false-claim
+  path, so a turn is pushed at most once). Answers and questions never trigger it.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
   (classically `remember`). The key is (tool, args, **world**) where `world` increments every
   time a WRITE_TOOLS call (write_file/edit_file/delete_file) succeeds — so re-running `javac`
@@ -157,6 +162,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   can burn a whole turn reasoning and return empty content. `message.thinking` is collected
   separately; a turn NEVER ends with an empty bubble — the loop says what happened instead.
 - Low-RAM pick: `ollama pull hermes3:3b` (~2 GB).
+- **Chat motion**: `bottom()` scrolls smoothly and only while the user is already near the
+  bottom (`pinned`), so scrolling up to read is never yanked back. While a turn runs, an
+  orbit (sun + two planets, accent colours) sits at the end of the chat and says what is
+  happening ("running gradle…"); it is driven by the Web Animations API, NOT CSS keyframes,
+  for the Windows "animation effects: off" reason below.
 - **Views**: Chat / IDE; the switcher lives in the composer, before the model pill.
   The IDE is Antigravity-style (explorer | tabbed editor | Agent panel); opening it
   moves the one chat DOM into the Agent panel and the sidebar exits "into the light"

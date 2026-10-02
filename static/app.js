@@ -442,7 +442,16 @@ function wireComposer() {
   $("#auto-chip").onclick = (e) => { state.auto = !state.auto; e.target.classList.toggle("on", state.auto); };
 }
 function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
-function bottom() { chat.scrollTop = chat.scrollHeight; }
+// Auto-scroll smoothly, but never yank the view away from someone reading back.
+let pinned = true;
+chat.addEventListener("scroll", () => {
+  pinned = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 80;
+});
+function bottom(force = false) {
+  if (!force && !pinned) return;
+  const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  chat.scrollTo({ top: chat.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+}
 function addMsg(role, text) {
   const d = document.createElement("div");
   d.className = `msg ${role}`;
@@ -540,7 +549,46 @@ async function send() {
   try { await streamChat(web); } catch (e) { addMsg("assistant", "error: " + e.message); }
   setBusy(false); save(); loadMemory();
 }
-function setBusy(b) { state.busy = b; $("#send").disabled = b; }
+function setBusy(b) {
+  state.busy = b;
+  $("#send").disabled = b;
+  b ? showOrbit() : hideOrbit();
+}
+
+/* ---------- "working" orbit: a planet going round the sun ---------- */
+let orbitEl = null, orbitAnims = [];
+function showOrbit(label = "working…") {
+  if (orbitEl) return;
+  orbitEl = document.createElement("div");
+  orbitEl.className = "orbit-wrap";
+  orbitEl.innerHTML = `<span class="orbit" aria-hidden="true">
+      <span class="orbit-ring"></span><span class="orbit-sun"></span>
+      <span class="orbit-arm"><span class="orbit-planet"></span></span>
+      <span class="orbit-arm two"><span class="orbit-planet small"></span></span>
+    </span><span class="orbit-label">${esc(label)}</span>`;
+  orbitEl.setAttribute("role", "status");
+  chat.appendChild(orbitEl);
+  // Web Animations, not CSS keyframes: Windows "animation effects: off" reports
+  // prefers-reduced-motion and would freeze a CSS-only spinner (see CLAUDE.md).
+  const spin = (el, ms) => el.animate([{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+    { duration: ms, iterations: Infinity, easing: "linear" });
+  orbitAnims = [spin(orbitEl.querySelector(".orbit-arm"), 2600),
+                spin(orbitEl.querySelector(".orbit-arm.two"), 4200)];
+  orbitAnims.push(orbitEl.querySelector(".orbit-sun").animate(
+    [{ opacity: .75, transform: "scale(.92)" }, { opacity: 1, transform: "scale(1.06)" },
+     { opacity: .75, transform: "scale(.92)" }],
+    { duration: 2200, iterations: Infinity, easing: "ease-in-out" }));
+  bottom();
+}
+function setOrbitLabel(text) {
+  if (orbitEl) orbitEl.querySelector(".orbit-label").textContent = text;
+}
+function hideOrbit() {
+  orbitAnims.forEach((a) => { try { a.cancel(); } catch {} });
+  orbitAnims = [];
+  orbitEl?.remove();
+  orbitEl = null;
+}
 
 async function streamChat(web) {
   const c = curConvo();
@@ -565,10 +613,13 @@ async function streamChat(web) {
       const ev = /event: (.*)/.exec(block)?.[1]; const dl = /data: (.*)/s.exec(block)?.[1];
       if (!ev) continue; const data = dl ? JSON.parse(dl) : null;
       if (ev === "token") {
-        if (!bodyEl) { bodyEl = addMsg("assistant", ""); bodyEl.classList.add("caret"); acc = ""; }
+        if (!bodyEl) { bodyEl = addMsg("assistant", ""); bodyEl.classList.add("caret"); acc = "";
+          if (orbitEl) chat.appendChild(orbitEl); }
         acc += data; paintStream(bodyEl, acc);
-      } else if (ev === "tool_call") { bodyEl?.classList.remove("caret"); bodyEl = null; ref = addTool(data.name, data.args); }
-      else if (ev === "tool_result") { if (ref) addToolResult(ref, data.result); ref = null; }
+      } else if (ev === "tool_call") { bodyEl?.classList.remove("caret"); bodyEl = null; ref = addTool(data.name, data.args);
+        setOrbitLabel(`running ${data.name}…`); if (orbitEl) chat.appendChild(orbitEl); }
+      else if (ev === "tool_result") { if (ref) addToolResult(ref, data.result); ref = null;
+        setOrbitLabel("thinking…"); if (orbitEl) chat.appendChild(orbitEl); }
       else if (ev === "image_note") {
         const last = [...c.messages].reverse().find((m) => m.role === "user");
         if (last) last.content += `\n[attached: ${data.paths.join(", ")}]` + (data.description ? `\n${data.description}` : "");
