@@ -1014,3 +1014,19 @@ $("#model-test")?.addEventListener("click", async () => {
       + `\n\nmodel: ${r.model}\nollama says it can: ${(r.caps || []).join(", ") || "(not reported)"}`;
   } catch (e) { state_.textContent = "error: " + e.message; }
 });
+
+$("#model-test-all")?.addEventListener("click", async () => {
+  const log = $("#model-test-log"), state_ = $("#model-test-state");
+  log.hidden = false; log.textContent = "";
+  state_.textContent = "testing every installed model — this loads each one in turn, give it a few minutes…";
+  try {
+    const r = await (await fetch("/api/model/test", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ all: true }) })).json();
+    if (r.error) { state_.textContent = "error: " + r.error; return; }
+    const best = r.results.find((x) => x.score === 2);
+    state_.textContent = best ? `best lead: ${best.model}` : "none of your models can call tools";
+    log.textContent = r.results.map((x) =>
+      `${x.score}/2  ${x.model}\n      ${x.verdict}\n` +
+      (x.steps || []).map((s) => `        ${s.ok ? "PASS" : "FAIL"} ${s.name}`).join("\n")).join("\n\n");
+  } catch (e) { state_.textContent = "error: " + e.message; }
+});

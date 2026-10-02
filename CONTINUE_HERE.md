@@ -1,3 +1,8 @@
+# >>> PIVOT 40b — rank every installed model (2026-10-02) <<<
+POST /api/model/test {"all": true} -> test_all_models(): every installed chat model (SKIP_MODELS
+drops embed/rerank/clip...), keep_alive=0 so each unloads, sorted by score desc. "Rank all my
+models" button next to "Test the lead model". Verified on 4 stub models incl. an embedding one.
+
 # >>> PIVOT 40 — MCP tools never reached the model + model fitness test (2026-10-02) <<<
 1. REAL BUG: MCP connectors only loaded when the chat TEXT contained the connector name
    (UI switchOnConnectors). "create a project" / "delete a couple of files" therefore ran with

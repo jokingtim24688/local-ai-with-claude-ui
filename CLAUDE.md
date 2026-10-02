@@ -108,10 +108,12 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   fortnite). Before this, "create a new unreal project" never contained the literal word the
   matcher wanted in the right place for the UI to switch it on, so the model got no engine
   tools at all and the user saw "enabled and running" connectors doing nothing.
-- **"Is this model good enough?"** — `POST /api/model/test` + a button in Customize -> Apps
-  runs two real checks against the composer's model (plain answer, and whether it actually
-  CALLS a tool, counting text-typed calls the app recovers) and gives a verdict: good lead /
-  worker-only / not usable. Measure before blaming the app.
+- **"Is this model good enough?"** — `POST /api/model/test` + two buttons in Customize -> Apps
+  run real checks against a model (plain answer, and whether it actually CALLS a tool, counting
+  text-typed calls the app recovers): verdict good lead / worker-only / not usable. `{"all":
+  true}` tests EVERY installed chat model (embeddings skipped) with `keep_alive=0` so the GPU
+  does not fill, and ranks them. Measure before blaming the app — the lead only needs chat +
+  tool calling, since the coding knowledge comes from skills/.
 - Agents run in the background (no VM/Terminal tabs any more; `/api/vm` etc. remain
   for tooling). **Connectors** are always configured but a chat only gets a third-party
   connector's MCP tools after the user mentions it there; the UI stores it per chat

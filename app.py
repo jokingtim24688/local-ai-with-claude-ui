@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -374,14 +375,16 @@ def api_settings_save():
 # "Is this model good enough to drive the app?" answered by measurement, not opinion:
 # can it answer in plain words, and can it actually CALL a tool when told to?
 
-def test_model(client, model: str) -> dict:
+def test_model(client, model: str, keep: int = -1) -> dict:
+    """keep=-1 keeps the model resident (testing the one you are about to use);
+    keep=0 unloads it after, so testing every model does not fill the GPU."""
     out = {"model": model, "caps": model_caps(client, model) or [], "steps": []}
 
     def step(name, ok, detail=""):
         out["steps"].append({"name": name, "ok": bool(ok), "detail": detail[:300]})
 
     try:
-        r = client.chat(model=model, stream=False, options={"num_ctx": 2048}, keep_alive=-1,
+        r = client.chat(model=model, stream=False, options={"num_ctx": 2048}, keep_alive=keep,
                         messages=[{"role": "system", "content": "Answer in plain words."},
                                   {"role": "user", "content": "Reply with exactly: READY"}],
                         **think_arg(client, model))
@@ -398,7 +401,7 @@ def test_model(client, model: str) -> dict:
              + ("" if native else text_tool_note(schemas))},
             {"role": "user", "content": "List the files in the workspace. Use your tool."}]
     try:
-        r = client.chat(model=model, stream=False, options={"num_ctx": 4096}, keep_alive=-1,
+        r = client.chat(model=model, stream=False, options={"num_ctx": 4096}, keep_alive=keep,
                         messages=msgs, tools=schemas if native else None, **think_arg(client, model))
         m = r["message"]
         calls = m.get("tool_calls") or []
@@ -411,20 +414,39 @@ def test_model(client, model: str) -> dict:
         step("calls a tool when told to", False, str(e))
 
     ok = [s["ok"] for s in out["steps"]]
+    out["score"] = sum(ok)
     out["verdict"] = ("good lead for this app" if all(ok) else
                       "usable as a WORKER, but a poor lead — it will not drive your apps"
                       if ok and ok[0] else "not usable")
     return out
 
 
+SKIP_MODELS = re.compile(r"embed|rerank|moondream|whisper|clip|bge|minilm", re.I)
+
+
+def test_all_models(client) -> list:
+    """Every installed chat model, best first. Each is unloaded after its turn."""
+    names = sorted(n for n in installed_models(client) if n and not SKIP_MODELS.search(n))
+    out = []
+    for n in names:
+        try:
+            out.append(test_model(client, n, keep=0))
+        except Exception as e:
+            out.append({"model": n, "steps": [], "score": -1, "verdict": f"failed to run: {e}"})
+    return sorted(out, key=lambda r: (-r.get("score", -1), r["model"]))
+
+
 @app.post("/api/model/test")
 def api_model_test():
     if ollama is None:
         return jsonify({"error": "ollama python lib not installed"}), 400
-    model = (request.get_json(force=True) or {}).get("model") or ""
-    if not model:
-        return jsonify({"error": "no model given"}), 400
+    body = request.get_json(force=True) or {}
+    model = body.get("model") or ""
     try:
+        if body.get("all"):
+            return jsonify({"results": test_all_models(ollama.Client())})
+        if not model:
+            return jsonify({"error": "no model given"}), 400
         return jsonify(test_model(ollama.Client(), model))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
