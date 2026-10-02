@@ -186,7 +186,8 @@ def main():
              ask=True)
     check("workspace file edits need no approval", "approval" not in r["events"]
           and os.path.isfile(os.path.join(WS, "auto.txt")))
-    SCRIPT_LOCAL = [call("delete_file", {"path": "src/B.java"}), say("ok")]
+    # run_command is still gated on purpose (only its cwd is jailed, not the command text)
+    SCRIPT_LOCAL = [call("run_command", {"command": "echo pwned > owned.txt"}), say("ok")]
     global SCRIPT
     SCRIPT = SCRIPT_LOCAL
     app.ollama = types.SimpleNamespace(Client=Stub)
@@ -200,8 +201,8 @@ def main():
         if m and not denied:
             denied = True
             app.app.test_client().post("/api/approve", json={"id": json.loads(m.group(1))["id"], "allow": False})
-    check("approval is requested when Auto is off", denied)
-    check("a denied tool does not run", os.path.isfile(os.path.join(WS, "src", "B.java")))
+    check("approval is requested for commands when Auto is off", denied)
+    check("a denied command does not run", not os.path.exists(os.path.join(WS, "owned.txt")))
 
     print("\n== context compaction ==")
     context._CACHE.clear()
