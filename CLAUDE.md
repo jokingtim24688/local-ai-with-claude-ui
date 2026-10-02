@@ -103,9 +103,18 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   folders (`apps.json`) only. `num_ctx` 16384 default (setting `num_ctx`) for MAIN and workers; old tool output is collapsed and old turns trimmed (`context.py`).
 - When the app starts Ollama itself, it sets `OLLAMA_MAX_LOADED_MODELS=1`,
   `NUM_PARALLEL=1`, `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q4_0` (the user's env wins).
+- **Our own app MCP servers switch themselves on by domain**: `api_chat` adds the builtin
+  connector whose name equals `skill_router.domain_of(task)` (unreal/blender/roblox/openscad/
+  fortnite). Before this, "create a new unreal project" never contained the literal word the
+  matcher wanted in the right place for the UI to switch it on, so the model got no engine
+  tools at all and the user saw "enabled and running" connectors doing nothing.
+- **"Is this model good enough?"** — `POST /api/model/test` + a button in Customize -> Apps
+  runs two real checks against the composer's model (plain answer, and whether it actually
+  CALLS a tool, counting text-typed calls the app recovers) and gives a verdict: good lead /
+  worker-only / not usable. Measure before blaming the app.
 - Agents run in the background (no VM/Terminal tabs any more; `/api/vm` etc. remain
-  for tooling). **Connectors** are always configured but a chat only gets a connector's
-  MCP tools after the user mentions it there; the UI stores it per chat
+  for tooling). **Connectors** are always configured but a chat only gets a third-party
+  connector's MCP tools after the user mentions it there; the UI stores it per chat
   (`convo.connectors`) and sends it as a chat-only system instruction +
   `/api/chat` `connectors` (workers inherit the same set).
 - **Startup** (`startup_apps` -> `apps.start_setup`): Roblox Studio + Unreal Engine are
@@ -157,7 +166,7 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
 ## Backend API (keep event/field names stable, or change both sides at once)
 `/api/branding /config /settings /models /skills /memory /tree /file /vm /system /tasks
 /bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
-/fs/list /fs/read /workspace /chats /integrations /google/{signin,signout} /bridges
+/fs/list /fs/read /workspace /chats /model/test /integrations /google/{signin,signout} /bridges
 /git/{status,diff,push} /chat(SSE) /approve`
 SSE events: `token, tool_call, tool_result, approval, image_note, error, done`.
 Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` gives them natively to a vision lead or has the `vision_model` describe them for a text-only lead.

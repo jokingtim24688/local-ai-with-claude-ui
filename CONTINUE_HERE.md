@@ -1,3 +1,13 @@
+# >>> PIVOT 40 — MCP tools never reached the model + model fitness test (2026-10-02) <<<
+1. REAL BUG: MCP connectors only loaded when the chat TEXT contained the connector name
+   (UI switchOnConnectors). "create a project" / "delete a couple of files" therefore ran with
+   zero engine tools even though the servers were enabled and running. api_chat now auto-adds
+   the BUILTIN connector matching skill_router.domain_of(task). Verified: "create a new unreal
+   project" -> mcp__unreal__* reach the model; a no-domain message still gets none.
+2. POST /api/model/test + "Test the lead model" button (Customize -> Apps): checks plain-text
+   answering and real tool calling (native OR text-typed-and-recovered), verdict =
+   good lead / worker-only / not usable. 4 stub models tested.
+
 # >>> PIVOT 39 — real build tools per language (2026-10-02) <<<
 Only gradle existed, so the lead could not build a C#/JS/Python/C++ app at all. Added to
 apps.py: dotnet, npm, node_run, python_run, cmake_build, maven (+ FINDERS/LABELS for

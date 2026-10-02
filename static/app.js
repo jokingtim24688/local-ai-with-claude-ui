@@ -998,3 +998,19 @@ document.querySelectorAll("[data-bridge]").forEach((b) => b.addEventListener("cl
   log.textContent = r.result || r.error; loadBridges();
 }));
 document.querySelector('.tab[data-tab="apps"]')?.addEventListener("click", loadBridges);
+
+
+/* ---------- "is this model good enough?" ---------- */
+$("#model-test")?.addEventListener("click", async () => {
+  const log = $("#model-test-log"), state_ = $("#model-test-state");
+  const model = modelSel.value;
+  log.hidden = false; log.textContent = ""; state_.textContent = `testing ${model}…`;
+  try {
+    const r = await (await fetch("/api/model/test", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model }) })).json();
+    if (r.error) { state_.textContent = "error: " + r.error; return; }
+    state_.textContent = r.verdict;
+    log.textContent = r.steps.map((s) => `${s.ok ? "PASS" : "FAIL"}  ${s.name}\n      ${s.detail}`).join("\n")
+      + `\n\nmodel: ${r.model}\nollama says it can: ${(r.caps || []).join(", ") || "(not reported)"}`;
+  } catch (e) { state_.textContent = "error: " + e.message; }
+});

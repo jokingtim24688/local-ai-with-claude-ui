@@ -370,6 +370,66 @@ def api_settings_save():
     return jsonify(save_settings(request.get_json(force=True) or {}))
 
 
+# ---- model fitness test -----------------------------------------------------
+# "Is this model good enough to drive the app?" answered by measurement, not opinion:
+# can it answer in plain words, and can it actually CALL a tool when told to?
+
+def test_model(client, model: str) -> dict:
+    out = {"model": model, "caps": model_caps(client, model) or [], "steps": []}
+
+    def step(name, ok, detail=""):
+        out["steps"].append({"name": name, "ok": bool(ok), "detail": detail[:300]})
+
+    try:
+        r = client.chat(model=model, stream=False, options={"num_ctx": 2048}, keep_alive=-1,
+                        messages=[{"role": "system", "content": "Answer in plain words."},
+                                  {"role": "user", "content": "Reply with exactly: READY"}],
+                        **think_arg(client, model))
+        said = (r["message"].get("content") or "").strip()
+        step("answers in plain text", "READY" in said.upper(), said or "(empty reply)")
+    except Exception as e:
+        step("answers in plain text", False, str(e))
+        out["verdict"] = "cannot run this model — check Ollama"
+        return out
+
+    schemas = [x for x in tools.SCHEMAS if x["function"]["name"] == "list_dir"]
+    native = "tools" in (out["caps"] or []) or not out["caps"]
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT.split("Which tool:")[0]
+             + ("" if native else text_tool_note(schemas))},
+            {"role": "user", "content": "List the files in the workspace. Use your tool."}]
+    try:
+        r = client.chat(model=model, stream=False, options={"num_ctx": 4096}, keep_alive=-1,
+                        messages=msgs, tools=schemas if native else None, **think_arg(client, model))
+        m = r["message"]
+        calls = m.get("tool_calls") or []
+        how = "native tool call" if calls else ""
+        if not calls:                                   # maybe it typed the call as text
+            found, _ = toolcalls.extract_calls(m.get("content") or "", {"list_dir"})
+            calls, how = found, "typed the call as text (the app recovers these)" if found else ""
+        step("calls a tool when told to", bool(calls), how or (m.get("content") or "")[:200])
+    except Exception as e:
+        step("calls a tool when told to", False, str(e))
+
+    ok = [s["ok"] for s in out["steps"]]
+    out["verdict"] = ("good lead for this app" if all(ok) else
+                      "usable as a WORKER, but a poor lead — it will not drive your apps"
+                      if ok and ok[0] else "not usable")
+    return out
+
+
+@app.post("/api/model/test")
+def api_model_test():
+    if ollama is None:
+        return jsonify({"error": "ollama python lib not installed"}), 400
+    model = (request.get_json(force=True) or {}).get("model") or ""
+    if not model:
+        return jsonify({"error": "no model given"}), 400
+    try:
+        return jsonify(test_model(ollama.Client(), model))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 # ---- chats: stored next to the app, NOT in browser storage ------------------
 # The window's port can change between launches (free_port), and browser storage is keyed
 # by origin — kept there, every chat would vanish on a port change.
@@ -1854,7 +1914,15 @@ def api_chat():
 
         subs = load_subagents()
         import connectors as C
-        active = body.get("connectors") or []           # this chat's connectors only
+        active = list(body.get("connectors") or [])     # this chat's connectors
+        # Our own app servers (blender/unreal/roblox/openscad/fortnite) switch themselves on
+        # when the job is clearly theirs. Waiting for the user to type the word "unreal" meant
+        # "create a project" reached the model with no engine tools at all.
+        dom = skill_router.domain_of(task_text)
+        if dom and not any(n.lower() == dom for n in active):
+            if any(c.get("builtin") and str(c.get("name", "")).lower() == dom
+                   and c.get("enabled", True) for c in load_connectors()):
+                active.append(dom)
         mcp_schemas, mcp_index = C.list_tools(chat_connectors(active)) if active else ([], {})
         schemas = None
         if tool_mode:
