@@ -102,7 +102,13 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   (`lead_app_tools`). Skill templates are verified (OpenSCAD compiles, Verse lints clean).
 - App tools (Blender/Unreal/Roblox) are **MAIN-only**; the ones that run code or launch
   programs need approval unless Auto is on. Paths: sandbox + user-registered project
-  folders (`apps.json`) only. `num_ctx` 16384 default (setting `num_ctx`) for MAIN and workers; old tool output is collapsed and old turns trimmed (`context.py`).
+  folders (`apps.json`) only. `num_ctx` 16384 default (setting `num_ctx`) for MAIN and workers; old tool output is collapsed, and when the chat still will not fit, `context.compact()`
+  SUMMARISES the oldest turns into one `[earlier in this chat]` note with the resident model
+  instead of deleting them (deleting is why the lead forgot a file it had just written). The
+  newest 6 messages are always verbatim, a tool result is never split from its call, the
+  summary is cached by span fingerprint so a long chat is summarised once, and if there is no
+  summariser or it fails it falls back to `trim_history`. The chat says "(compacted N earlier
+  messages…)" when it happens.
 - When the app starts Ollama itself, it sets `OLLAMA_MAX_LOADED_MODELS=1`,
   `NUM_PARALLEL=1`, `FLASH_ATTENTION=1`, `KV_CACHE_TYPE=q4_0` (the user's env wins).
 - **Our own app MCP servers switch themselves on by domain**: `api_chat` adds the builtin

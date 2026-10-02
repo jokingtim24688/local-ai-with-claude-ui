@@ -1984,7 +1984,22 @@ def api_chat():
                 held = None            # None = undecided, True = looks like a text tool call
                 sent = 0               # chars of acc already streamed to the UI
                 context.collapse_tool_outputs(msgs)                  # old tool output -> head/tail
-                context.trim_history(msgs, ctx_size() * 3)          # ~3 chars/token budget
+                # Still too big? Summarise the oldest turns with the model that is already
+                # resident, instead of deleting them — deleting is how the lead "forgot" the
+                # file it had just written and ended up with nothing to say.
+                def _sum(text, _m=model, _c=client):
+                    r = _c.chat(model=_m, stream=False, keep_alive=-1, options={"num_ctx": ctx_size()},
+                                messages=[{"role": "system", "content":
+                                           "Summarise this chat so far for yourself in under 120 words: "
+                                           "what the user wants, decisions made, files written or "
+                                           "deleted, errors still open. Terse notes, no preamble."},
+                                          {"role": "user", "content": text[-12000:]}])
+                    return (r["message"].get("content") or "").strip()
+
+                info = context.compact(msgs, ctx_size() * 3, _sum)   # ~3 chars/token budget
+                if info["compacted"]:
+                    yield sse("token", f"\n(compacted {info['compacted']} earlier messages to stay "
+                                       "inside the context window)\n")
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
                                     options={"num_ctx": ctx_size()}, tools=schemas if native else None,
                                     stream=True, **think_arg(client, model))

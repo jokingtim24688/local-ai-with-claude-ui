@@ -1,3 +1,12 @@
+# >>> PIVOT 43 — real context compaction (2026-10-02) <<<
+trim_history DELETED the oldest turns, so long chats lost the file just written and the lead
+answered with nothing. context.compact(msgs, budget, summarise, keep_recent=6) now summarises
+that span into one "[earlier in this chat] …" user message via the resident model (app.py
+passes _sum()). Cached by sha1 of the span so it runs once per long chat, never splits a tool
+result from its call, keeps the system prompt, falls back to trim_history when there is no
+summariser or it raises. Verified: 72.6k-char history -> 10.4k sent, summary present, user
+told "(compacted 74 earlier messages…)". 10 unit cases + 1 end-to-end.
+
 # >>> PIVOT 42 — orbit spinner, smooth pinned scroll, proposals pushed into action <<<
 1. static/app.js bottom(): smooth scrollTo, but only when `pinned` (user within 80px of the
    bottom) — reading back is no longer interrupted. Honours prefers-reduced-motion.
