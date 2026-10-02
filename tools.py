@@ -351,11 +351,15 @@ SCHEMAS = [
 
 
 def scan_skills(skills_dir: str) -> dict[str, dict]:
-    """Load name+desc+body from skills/**/SKILL.md files."""
-    SKILLS.clear()
+    """Load name+desc+body from skills/**/SKILL.md files.
+
+    A missing or empty folder leaves whatever is already loaded alone: /api/skills rescans on
+    every call, and clearing first meant one bad path silently emptied the catalogue, which
+    killed skill routing for the whole app until a restart."""
     root = Path(skills_dir)
-    if not root.is_dir():
+    if not root.is_dir() or not any(root.rglob("SKILL.md")):
         return SKILLS
+    SKILLS.clear()
     for md in root.rglob("SKILL.md"):
         text = md.read_text(encoding="utf-8", errors="replace")
         name = md.parent.name

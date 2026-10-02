@@ -1,3 +1,14 @@
+# >>> PIVOT 44 — whole-app test (2026-10-02) <<<
+tests_app.py: 55 checks against a stub Ollama in a temp workspace + temp data dir — every GET
+route, X-NC guards, 6 sandbox-escape attempts, a real session (list -> read -> missing-file
+steer -> write bad Java -> javac fails -> rewrite -> javac passes -> delete), the honesty
+guards (false claim / proposal / repeat / thinking-only), the approval gate incl. a DENIED
+tool not running, compaction on a 73k chat, routing, the model fitness test, a live MCP
+server over stdio, and UI id wiring. All pass.
+REAL BUG it found: tools.scan_skills() cleared SKILLS before checking the folder, so
+GET /api/skills with a missing/empty skills dir wiped the catalogue and killed routing until
+restart. Now a missing or empty dir leaves the loaded skills alone.
+
 # >>> PIVOT 43 — real context compaction (2026-10-02) <<<
 trim_history DELETED the oldest turns, so long chats lost the file just written and the lead
 answered with nothing. context.compact(msgs, budget, summarise, keep_recent=6) now summarises

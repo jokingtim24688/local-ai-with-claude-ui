@@ -70,6 +70,9 @@ skills/        <name>/SKILL.md — new ones are copied into NightCrew-data on ea
                roblox-studio = condensed official docs
 scripts/install_abliterated_models.ps1  one command to install 10 verified abliterated
                models (curl + the matching official chat template), then rank them in-app
+tests_app.py   whole-app smoke test (55 checks: API, sandbox, a real write->build->fix->build
+               session, honesty guards, approval, compaction, MCP, UI wiring) — `python tests_app.py`
+tests_chat_output.py / tests_routing.py   chat-output and typo-routing regressions
 elysium.spec + build*.{py,bat,sh}   packaging/installers
 ```
 
