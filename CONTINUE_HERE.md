@@ -1,3 +1,10 @@
+# >>> PIVOT 32 — silent turns on thinking models (2026-10-02) <<<
+Qwen3 lead returned NOTHING in the UI: the loop only read message.content, and the
+"blank reply" notice was gated behind `acc.strip()`, so a turn with thinking-only output
+printed nothing at all. Now: think_arg() sends `think` only to models whose caps include
+"thinking" (default OFF, setting `think` + Customize checkbox), message.thinking is
+collected, and an empty turn always explains itself (thinking-only / nothing / typed-JSON).
+
 # >>> PIVOT 31 — chats persist on disk; read-not-create fix; language skills (2026-10-02) <<<
 1. Chat history was lost whenever desktop.free_port() picked 5174/5175/0: localStorage is keyed by
    origin. Chats/projects/instructions now live in NightCrew-data/chats.json via GET/POST /api/chats

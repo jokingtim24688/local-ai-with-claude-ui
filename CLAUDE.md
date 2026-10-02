@@ -105,6 +105,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   Epic Games Launcher, which needs the user's Epic sign-in once), then both start
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
+- **Thinking models** (Qwen3 and friends): `think` is sent ONLY to models whose Ollama
+  capabilities list `thinking` (sending it to others makes Ollama reject the request), and
+  it defaults to OFF (setting `think`, toggle in Customize -> Apps) because a thinking model
+  can burn a whole turn reasoning and return empty content. `message.thinking` is collected
+  separately; a turn NEVER ends with an empty bubble — the loop says what happened instead.
 - Low-RAM pick: `ollama pull hermes3:3b` (~2 GB).
 - **Views**: Chat / IDE; the switcher lives in the composer, before the model pill.
   The IDE is Antigravity-style (explorer | tabbed editor | Agent panel); opening it

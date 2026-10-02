@@ -69,6 +69,7 @@ CASES = [
                                        '{"name": "world", "arguments": {"": "hello!"}}', 'ok']),
     ("plain greeting", ['Hey! What are we building tonight?']),
     ("real code block is kept", ['Here you go:\n```python\nprint("hi")\n```']),
+    ("thinking only, never answers", [""]),      # the model's content is empty (Qwen3 thinking)
     ("exec tag writes a file", ['Here is the model:\n```openscad file=models/box.scad\ncube([10,10,10]);\n```',
                                 'Saved it.']),
 ]

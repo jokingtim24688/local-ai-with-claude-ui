@@ -104,7 +104,8 @@ def load_settings() -> dict:
          "launch_on_start": True,   # start them in the background when the app opens
          "workdir": "",             # folder the agents work in ("" = the built-in workspace)
          "vision_model": vision.DEFAULT_VISION,   # describes pasted images for a text-only lead
-         "num_ctx": 16384}          # context window for MAIN and workers
+         "num_ctx": 16384,          # context window for MAIN and workers
+         "think": False}            # Qwen3 & co: let the model "think" before answering
     try:
         with open(_settings_path(), encoding="utf-8") as f:
             d.update({k: v for k, v in json.load(f).items() if k in d})
@@ -580,6 +581,15 @@ def model_caps(client, name: str):
     except Exception:
         pass
     return None
+
+
+def think_arg(client, model: str) -> dict:
+    """{'think': bool} for a model whose capabilities include thinking, else {}. Sending
+    `think` to a model without it makes Ollama reject the whole request."""
+    caps = model_caps(client, model)
+    if caps and "thinking" in caps:
+        return {"think": bool(load_settings().get("think"))}
+    return {}
 
 
 def text_tool_note(schemas: list) -> str:
@@ -1424,7 +1434,7 @@ def _run_subagent(client, default_model: str, sub: dict, task: str, connectors=N
         calls = []
         for chunk in client.chat(model=model, messages=msgs, keep_alive=keep,
                                  options={"num_ctx": ctx_size()}, tools=schemas if native else None,
-                                 stream=True):
+                                 stream=True, **think_arg(client, model)):
             m = chunk.get("message", {})
             acc += m.get("content") or ""
             calls += m.get("tool_calls") or []
@@ -1830,9 +1840,11 @@ def api_chat():
                 context.trim_history(msgs, ctx_size() * 3)          # ~3 chars/token budget
                 resp = client.chat(model=model, messages=msgs, keep_alive=-1,
                                     options={"num_ctx": ctx_size()}, tools=schemas if native else None,
-                                    stream=True)
+                                    stream=True, **think_arg(client, model))
+                thought = ""
                 for chunk in resp:
                     msg = chunk.get("message", {})
+                    thought += msg.get("thinking") or ""      # Qwen3 etc. answer in a separate field
                     piece = msg.get("content") or ""
                     if piece:
                         acc += piece
@@ -1887,12 +1899,22 @@ def api_chat():
                              "tool_calls": calls or None})
 
                 if not calls:
-                    if not shown.strip() and acc.strip():
-                        # the model only ever typed tool-call JSON: say so instead of a blank reply
-                        yield sse("token", f"({model} kept typing tool calls as text instead of "
-                                           "answering. Pick a stronger lead in the model picker — "
-                                           "qwen3:4b, qwen2.5:7b or hermes3:8b — and leave the small "
-                                           "coder model as the worker.)")
+                    if not shown.strip():
+                        # a turn must never end with an empty bubble: say what happened
+                        if thought.strip() and not acc.strip():
+                            yield sse("token", f"({model} spent the whole turn thinking and never "
+                                               "wrote an answer. Customize -> turn Thinking off, or "
+                                               "ask again more specifically.)\n\nIts notes:\n"
+                                               + thought.strip()[-1200:])
+                        elif acc.strip():
+                            yield sse("token", f"({model} kept typing tool calls as text instead of "
+                                               "answering. Pick a stronger lead in the model picker — "
+                                               "qwen3:4b, qwen2.5:7b or hermes3:8b — and leave the small "
+                                               "coder model as the worker.)")
+                        else:
+                            yield sse("token", f"({model} returned nothing. It may have run out of "
+                                               "context — start a new chat, or lower num_ctx in "
+                                               "Customize if your GPU is full.)")
                     break
 
                 for tc in calls:
