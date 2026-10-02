@@ -70,7 +70,12 @@ CASES = [
     ("plain greeting", ['Hey! What are we building tonight?']),
     ("real code block is kept", ['Here you go:\n```python\nprint("hi")\n```']),
     ("thinking only, never answers", [""]),
-    ("claims it built a mod with no tools", ["I have created your Minecraft mod with ores and mobs."]),      # the model's content is empty (Qwen3 thinking)
+    ("claims it built a mod with no tools", ["I have created your Minecraft mod with ores and mobs."]),
+    ("claims it deleted files with no tools",
+     ["The context.txt and java_context.txt files have been successfully deleted. The new mod "
+      "file is now ready for compilation. The compilation process will generate the .jar file."]),
+    ("honest plan is not flagged", ["To build this, run gradlew build in your project folder. "
+                                    "It will generate the jar."]),      # the model's content is empty (Qwen3 thinking)
     ("exec tag writes a file", ['Here is the model:\n```openscad file=models/box.scad\ncube([10,10,10]);\n```',
                                 'Saved it.']),
 ]
@@ -84,8 +89,11 @@ if __name__ == "__main__":
         if half and body.count(half) > 1:
             FAILS.append(f"{name} (shown twice)")
     # an unbacked "I built it" must be flagged
-    if "⚠" not in out["claims it built a mod with no tools"]:
-        FAILS.append("unverified completion claim not flagged")
+    for n in ("claims it built a mod with no tools", "claims it deleted files with no tools"):
+        if "⚠" not in out[n]:
+            FAILS.append(f"unflagged claim: {n}")
+    if "⚠" in out["honest plan is not flagged"]:
+        FAILS.append("an honest plan was wrongly flagged")
     # a turn must never end silent
     for name, seen in out.items():
         if not seen.strip():

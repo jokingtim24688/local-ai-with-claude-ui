@@ -1,3 +1,12 @@
+# >>> PIVOT 36b — claim detector fixes (2026-10-02) <<<
+Real miss from a screenshot: "The ... files have been successfully deleted. ... The compilation
+process WILL generate the .jar" was NOT flagged, for two reasons, both fixed:
+ - an adverb between "been" and the verb ("been successfully deleted") broke the pattern, and
+   delete/remove were missing from the "successfully <verb>" list;
+ - claims_work_done() split by LINES, so the later "will generate" (a NOT_A_CLAIM hit) excused
+   the earlier claim in the same paragraph. It now splits per SENTENCE.
+18 phrase cases + 3 regression turns (incl. an honest plan that must NOT be flagged).
+
 # >>> PIVOT 36 — mechanical hallucination flag + updater closes dupes (2026-10-02) <<<
 1. toolcalls.claims_work_done(): regex set for completion claims, with a NOT_A_CLAIM guard so
    plans ("I would create", "to build this, run") don't match. app.py tracks ran_ok (any tool

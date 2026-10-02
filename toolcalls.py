@@ -139,26 +139,32 @@ def extract_calls(text: str, known: set) -> tuple[list, str]:
 
 # A model with no tools run this turn still says "I've created your mod". These spot that
 # claim so the chat loop can mark it unverified — a prompt rule alone does not hold.
+_DONE = (r"creat(?:ed|ing)|built|made|written|wrote|added|compil(?:ed|ing)|fixed|implemented|"
+         r"generated|installed|set\s+up|saved|updated|delet(?:ed|ing)|removed|cleaned\s+up")
+_ADV = r"(?:\s+(?:successfully|already|now|just|fully|properly|safely|all|both))*"
 DID_IT = [
-    re.compile(r"\bi(?:'ve|\s+have)?\s+(?:just\s+|now\s+)?(?:created|built|made|written|wrote|"
-               r"added|compiled|fixed|implemented|generated|installed|set\s+up|saved|updated|"
-               r"deleted|removed)\b", re.I),
-    re.compile(r"\b(?:has|have|is)\s+been\s+(?:created|built|made|written|added|compiled|"
-               r"generated|saved|updated|deleted|removed)\b", re.I),
-    re.compile(r"\byour\s+\w+\s+(?:is|are)\s+(?:now\s+)?(?:ready|complete|created|built|done)\b", re.I),
-    re.compile(r"\b(?:successfully|finished)\s+(?:created|built|compiled|generated|added|wrote|"
-               r"written|installed|set\s+up)\b", re.I),
+    re.compile(rf"\bi(?:'ve|\s+have)?{_ADV}\s+(?:{_DONE})\b", re.I),
+    re.compile(rf"\b(?:has|have|is|are|were|was)\s+been{_ADV}\s+(?:{_DONE})\b", re.I),
+    re.compile(rf"\b(?:has|have|is|are|were|was){_ADV}\s+(?:{_DONE})\b", re.I),
+    re.compile(rf"\b(?:successfully|finished)\s+(?:{_DONE})\b", re.I),
+    re.compile(r"\b(?:your|the)\s+[\w .'-]{0,40}?\s*(?:is|are)\s+(?:now\s+)?"
+               r"(?:ready|complete|done|created|built|deleted|gone)\b", re.I),
 ]
-# "I would create…", "to create…", "you can build…" are plans, not claims
-NOT_A_CLAIM = re.compile(r"\b(?:would|should|could|can|will|going to|plan to|let me|i'll|to)\s+\w{0,12}\s*"
-                         r"(?:creat|build|mak|writ|add|compil|generat|instal)", re.I)
+# "I would create…", "to create…", "you can build…", "it will be deleted" are plans, not claims
+NOT_A_CLAIM = re.compile(r"\b(?:would|should|could|can|will|won't|cannot|can't|going\s+to|about\s+to|"
+                         r"plan\s+to|let\s+me|i'll|need\s+to|have\s+to|must|to)\s+(?:\w+\s+){0,3}?"
+                         r"(?:creat|build|mak|writ|add|compil|generat|instal|delet|remov|fix)", re.I)
+
+
+SENTENCE = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def claims_work_done(text: str) -> bool:
-    """True if the text says work was COMPLETED (not proposed)."""
-    for line in text.splitlines():
-        s = line.strip()
-        if not s or s.startswith("("):            # our own notes
+    """True if the text says work was COMPLETED (not proposed). Judged per SENTENCE: a later
+    "the build will generate a .jar" must not excuse an earlier "the files have been deleted"."""
+    for s in SENTENCE.split(text):
+        s = s.strip()
+        if not s or s.startswith(("(", "⚠")):     # our own notes
             continue
         if any(p.search(s) for p in DID_IT) and not NOT_A_CLAIM.search(s):
             return True
