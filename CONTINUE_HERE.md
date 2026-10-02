@@ -1,3 +1,12 @@
+# >>> PIVOT 34 — gradle/builds, no-hallucination rule, real window drag (2026-10-02) <<<
+1. tools.run_command(command, cwd, timeout): runs in the workspace OR a registered project
+   folder, up to 1800s, output trimmed. apps.gradle(task, project) walks up for gradlew/.bat,
+   surfaces error lines. Both GATED. DOMAIN_TOOLS["java"] = ["gradle"] so the lead gets it.
+2. SYSTEM_PROMPT: never claim built/compiled/created unless a tool call returned success.
+3. desktop.Api.drag_start/drag_move + #titlebar pointer handlers in app.js = window dragging
+   that actually works on WebView2 (pywebview's drag region does not). dblclick = maximize.
+   Untested on real Windows — the user must confirm.
+
 # >>> PIVOT 33 — repeated-tool-call loop (2026-10-02) <<<
 qwen3-abl called `remember` with the SAME note 9+ times (user screenshot) until the 12-round
 cap. Now done_calls/seen_calls key on tool+args: run once, 2nd time returns a canned

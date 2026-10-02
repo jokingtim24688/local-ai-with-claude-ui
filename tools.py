@@ -182,15 +182,25 @@ def grep(pattern: str, path: str = ".") -> str:
     return "\n".join(out[:200]) or "(no matches)"
 
 
-def run_command(command: str) -> str:
+def run_command(command: str, cwd: str = "", timeout: int = 120) -> str:
+    """Run a shell command. `cwd` defaults to the workspace and may also be one of the
+    project folders the user registered in Customize -> Apps — that is how builds like
+    `gradlew build` run in the user's own project. Builds are slow: raise `timeout`."""
     if SANDBOX is None:
         raise ToolError("no sandbox set")
-    r = subprocess.run(
-        command, shell=True, cwd=SANDBOX,
-        capture_output=True, text=True, timeout=120,
-    )
-    out = (r.stdout or "") + (r.stderr or "")
-    return f"exit={r.returncode}\n{out}".strip()
+    where = _read_jail(cwd) if cwd else SANDBOX
+    if not where.is_dir():
+        raise ToolError(f"not a folder: {cwd}")
+    try:
+        r = subprocess.run(command, shell=True, cwd=str(where), capture_output=True,
+                           text=True, errors="replace", timeout=max(5, min(int(timeout), 1800)))
+    except subprocess.TimeoutExpired:
+        return (f"error: '{command[:60]}' hit the {timeout}s timeout in {where}. Builds are slow — "
+                "call it again with a bigger timeout (up to 1800).")
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    if len(out) > 6000:                       # keep a small model's context usable
+        out = out[:1500] + f"\n…[{len(out) - 4500} chars cut]…\n" + out[-3000:]
+    return f"exit={r.returncode} (in {where})\n{out}".strip()
 
 
 def load_skill(name: str) -> str:
@@ -298,8 +308,13 @@ SCHEMAS = [
         "parameters": {"type": "object", "properties": {
             "pattern": {"type": "string"}, "path": {"type": "string"}}, "required": ["pattern"]}}},
     {"type": "function", "function": {
-        "name": "run_command", "description": "Run a shell command in the workdir.",
-        "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
+        "name": "run_command",
+        "description": "Run a shell command. cwd defaults to the workspace; pass a registered "
+                       "project folder to build there (e.g. gradlew build). timeout seconds, "
+                       "default 120 — use 600+ for a Gradle/Maven build.",
+        "parameters": {"type": "object", "properties": {
+            "command": {"type": "string"}, "cwd": {"type": "string"},
+            "timeout": {"type": "integer"}}, "required": ["command"]}}},
     {"type": "function", "function": {
         "name": "load_skill", "description": "Load a skill body by name.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},

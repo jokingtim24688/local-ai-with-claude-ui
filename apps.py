@@ -684,7 +684,38 @@ def unreal_quick_level(name: str = "SimpleLevel", project: str = "") -> str:
 
 # ---- registry (MAIN only; subagents write, MAIN runs + debugs) --------------
 
+def gradle(task: str = "build", project: str = "", timeout: int = 900) -> str:
+    """Run the Gradle wrapper in a project folder (Minecraft mods, Android, plain Java).
+    Finds gradlew / gradlew.bat by walking up from `project`, falling back to a `gradle`
+    on PATH. Returns the tail plus every error line."""
+    root = Path(resolve(project)) if project else Path(str(tools.SANDBOX))
+    if root.is_file():
+        root = root.parent
+    wrapper, here = None, root
+    for _ in range(4):
+        cand = here / ("gradlew.bat" if WIN else "gradlew")
+        if cand.is_file():
+            wrapper, root = str(cand), here
+            break
+        if here.parent == here:
+            break
+        here = here.parent
+    if wrapper is None:
+        wrapper = _which("gradle")
+        if not wrapper:
+            raise tools.ToolError(
+                f"no gradlew in {root} or its parents, and no gradle on PATH. Open the project "
+                "folder in Customize -> Apps and check it really is a Gradle project.")
+    cmd = [wrapper] + task.split()
+    code, out = _run(cmd, max(30, min(int(timeout), 3600)), cwd=str(root))
+    lines = out.splitlines()
+    bad = [l for l in lines if re.search(r"error:|FAILURE|Caused by|^e: ", l)][:40]
+    body = ("ERRORS:\n" + "\n".join(bad) + "\n--- tail ---\n" if bad else "") + "\n".join(lines[-40:])
+    return f"exit={code} (gradle {task} in {root})\n{_tail(body, 5000)}"
+
+
 REGISTRY = {
+    "gradle": gradle,
     "app_status": app_status,
     "blender_run": blender_run,
     "blender_open": blender_open,
@@ -710,7 +741,7 @@ REGISTRY = {
     "roblox_test": lambda **a: __import__("engines").roblox_test(**a),
 }
 # run code or launch programs -> approval unless Auto is on
-GATED = {"blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
+GATED = {"gradle", "blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
          "roblox_open", "rojo", "app_control", "unreal_quick_level", "openscad_render", "run_plan",
          "unreal_new_project", "uefn_open", "roblox_test"}
 
@@ -723,6 +754,10 @@ def _fn(name, desc, props=None, req=None):
 
 _S = {"type": "string"}
 SCHEMAS = [
+    _fn("gradle", "Build/run a Gradle project (Minecraft mod, Android, Java app) with its own "
+        "gradlew: task 'build', 'runClient', 'clean build', 'test'. project = the project folder "
+        "(registered in Customize -> Apps). Compile errors come back with file and line.",
+        {"task": _S, "project": _S, "timeout": {"type": "integer"}}),
     _fn("app_status", "Which of Blender / Unreal Engine / Roblox Studio / Rojo / luau-analyze are "
         "installed (paths) and which project folders you may touch."),
     _fn("blender_run", "Run Blender Python headless: pass inline `code` (bpy) or a sandbox `script`. "

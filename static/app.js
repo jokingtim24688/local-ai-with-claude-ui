@@ -206,6 +206,41 @@ function wireTitlebar() {
   const show = () => { const c = $("#tb-ctrls"); if (c) c.hidden = false; };
   if (window.pywebview) show();
   window.addEventListener("pywebviewready", show);
+
+  // Drag the window by its bar. pywebview's own drag region does nothing on WebView2,
+  // so move the window ourselves: remember where it started, then follow the pointer.
+  const bar = $("#titlebar");
+  if (!bar) return;
+  let from = null;
+  bar.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    const a = api(); if (!a || !a.drag_start) return;
+    from = { x: e.screenX, y: e.screenY };
+    a.drag_start();
+    bar.setPointerCapture(e.pointerId);        // keep getting moves outside the window
+    e.preventDefault();
+  });
+  let pending = null, frame = 0;
+  bar.addEventListener("pointermove", (e) => {
+    if (!from) return;
+    pending = [e.screenX - from.x, e.screenY - from.y];
+    if (frame) return;                         // one bridge call per frame, not per event
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (pending) api()?.drag_move(pending[0], pending[1]);
+    });
+  });
+  const stop = (e) => {
+    if (!from) return;
+    from = null; pending = null;
+    if (frame) { cancelAnimationFrame(frame); frame = 0; }
+    try { bar.releasePointerCapture(e.pointerId); } catch {}
+  };
+  bar.addEventListener("pointerup", stop);
+  bar.addEventListener("pointercancel", stop);
+  bar.addEventListener("dblclick", (e) => {    // double-click the bar = maximize/restore
+    if (!e.target.closest("button")) api()?.toggle_maximize();
+  });
 }
 function wireCollapse() {
   const collapse = () => $("#shell").classList.add("collapsed");

@@ -105,6 +105,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   Epic Games Launcher, which needs the user's Epic sign-in once), then both start
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
+- `run_command` takes `cwd` (workspace, or a registered project folder) and `timeout` (to
+  1800s) so builds run in the user's own project; `gradle(task, project)` finds gradlew by
+  walking up and reports compile errors with file/line. Both gated.
+- The lead must never claim it built/compiled/created anything unless a tool call in that
+  conversation returned success — it hallucinated finishing a Minecraft mod otherwise.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
   (classically `remember`). The same (tool, args) is executed ONCE per turn; a repeat returns
   "already called, nothing changed — answer now", and a second repeat ends the turn with a
@@ -138,6 +143,10 @@ Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` 
   live at the top of `style.css` (`--sky-*`, `--accent*`, `--ctp-*`).
 - pywebview `js_api`: never keep the window (or any native object) in a PUBLIC
   attribute — pywebview walks public attributes recursively (the drag crash). Use `_window`.
+- Window dragging is OURS, not pywebview's: `pywebview-drag-region` does nothing on the
+  WebView2 backend, so `#titlebar` pointer events call `Api.drag_start/drag_move`, which
+  `window.move()`s from the start position (rAF-throttled, pointer capture, dblclick =
+  maximize). Keep every drag attribute underscore-private.
 - Runtime json (subagents/tasks/bus/connectors/targets/settings/apps/chats, MEMORY.md, prompt.md) is
   gitignored; it's user data, written to `NightCrew-data/` next to the exe (Windows),
   `~/Library/Application Support/NightCrew` (macOS app), or the repo root (dev).

@@ -162,6 +162,36 @@ def main():
             def __init__(self):
                 self._window = None
                 self._max = False
+                self._origin = None
+
+            # --- window dragging -------------------------------------------------
+            # pywebview's own `pywebview-drag-region` does not move the window on the
+            # WebView2 backend, so the titlebar drives window.move() through here.
+            # Every attribute stays underscore-private (see the note above).
+            def drag_start(self):
+                w = self._window
+                if not w:
+                    return
+                try:
+                    self._origin = (int(w.x), int(w.y))
+                except Exception:
+                    self._origin = None          # this pywebview has no x/y
+
+            def drag_move(self, dx, dy):
+                w = self._window
+                if not w or not self._origin:
+                    return
+                if self._max:                    # dragging a maximized window restores it first
+                    self._max = False
+                    try:
+                        w.restore()
+                        self._origin = (int(w.x), int(w.y))
+                    except Exception:
+                        pass
+                try:
+                    w.move(self._origin[0] + int(dx), self._origin[1] + int(dy))
+                except Exception:
+                    pass
 
             def minimize(self):
                 if self._window:

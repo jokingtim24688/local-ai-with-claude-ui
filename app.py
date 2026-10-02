@@ -70,6 +70,9 @@ Which tool:
 - 3D-printable / mechanical parts -> OpenSCAD: openscad_render
 - Fortnite / UEFN island or game rules -> a plan (kind island) or a Verse file, verse_check
 - files and commands in the workspace -> read_file / write_file / edit_file / run_command
+NEVER say you built, compiled, created or fixed something unless a tool call in THIS
+conversation returned success for it. If you have not run it, say exactly that and what you
+would run. Describing a plan as if it were done is a lie the user will act on.
 NEVER invent a file that is supposed to already exist. If the user says "read / look at / use
 my <file>", call read_file. If that says the file is missing, use glob or list_dir to FIND it
 and read the real one — do not create it and do not guess what is inside it. Only create a
@@ -244,6 +247,9 @@ DOMAIN_TOOLS = {
     "unreal": ["unreal_quick_level", "unreal_new_project", "unreal_run_python", "unreal_open",
                "unreal_uat", "run_plan", "terrain_heightmap"],
     "fortnite": ["run_plan", "verse_check", "terrain_heightmap", "uefn_list", "uefn_open"],
+    "java": ["gradle"],
+    "csharp": ["app_control"],
+    "cpp": ["app_control"],
     "roblox": ["run_plan", "roblox_open", "luau_check", "rojo", "roblox_test"],
 }
 CORE_APP_TOOLS = ["app_status", "app_control", "open_url", "fetch_docs"]
