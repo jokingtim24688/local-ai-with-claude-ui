@@ -688,11 +688,13 @@ def gradle(task: str = "build", project: str = "", timeout: int = 900) -> str:
     """Run the Gradle wrapper in a project folder (Minecraft mods, Android, plain Java).
     Finds gradlew / gradlew.bat by walking up from `project`, falling back to a `gradle`
     on PATH. Returns the tail plus every error line."""
-    root = Path(resolve(project)) if project else Path(str(tools.SANDBOX))
+    root = Path(str(tools._jail(project))) if project else Path(str(tools.SANDBOX))
     if root.is_file():
         root = root.parent
     wrapper, here = None, root
     for _ in range(4):
+        if tools.SANDBOX not in here.parents and here != tools.SANDBOX:
+            break                       # never look for a build script outside the workspace
         cand = here / ("gradlew.bat" if WIN else "gradlew")
         if cand.is_file():
             wrapper, root = str(cand), here
@@ -755,8 +757,8 @@ def _fn(name, desc, props=None, req=None):
 _S = {"type": "string"}
 SCHEMAS = [
     _fn("gradle", "Build/run a Gradle project (Minecraft mod, Android, Java app) with its own "
-        "gradlew: task 'build', 'runClient', 'clean build', 'test'. project = the project folder "
-        "(registered in Customize -> Apps). Compile errors come back with file and line.",
+        "gradlew: task 'build', 'runClient', 'clean build', 'test'. Runs in the workspace "
+        "(project = a subfolder of it). Compile errors come back with file and line.",
         {"task": _S, "project": _S, "timeout": {"type": "integer"}}),
     _fn("app_status", "Which of Blender / Unreal Engine / Roblox Studio / Rojo / luau-analyze are "
         "installed (paths) and which project folders you may touch."),

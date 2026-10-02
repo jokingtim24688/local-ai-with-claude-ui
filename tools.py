@@ -183,12 +183,12 @@ def grep(pattern: str, path: str = ".") -> str:
 
 
 def run_command(command: str, cwd: str = "", timeout: int = 120) -> str:
-    """Run a shell command. `cwd` defaults to the workspace and may also be one of the
-    project folders the user registered in Customize -> Apps — that is how builds like
-    `gradlew build` run in the user's own project. Builds are slow: raise `timeout`."""
+    """Run a shell command INSIDE THE WORKSPACE only (`cwd` may be a subfolder of it).
+    Point the workspace at the project you want to build (IDE -> PC -> Use). Builds are
+    slow, so raise `timeout` (seconds, up to 1800) for gradle/maven."""
     if SANDBOX is None:
         raise ToolError("no sandbox set")
-    where = _read_jail(cwd) if cwd else SANDBOX
+    where = _jail(cwd) if cwd else SANDBOX
     if not where.is_dir():
         raise ToolError(f"not a folder: {cwd}")
     try:
@@ -201,6 +201,26 @@ def run_command(command: str, cwd: str = "", timeout: int = 120) -> str:
     if len(out) > 6000:                       # keep a small model's context usable
         out = out[:1500] + f"\n…[{len(out) - 4500} chars cut]…\n" + out[-3000:]
     return f"exit={r.returncode} (in {where})\n{out}".strip()
+
+
+def delete_file(path: str, recursive: bool = False) -> str:
+    """Delete a file (or, with recursive=true, a folder) INSIDE THE WORKSPACE only.
+    Never the workspace itself, and never anything outside it."""
+    import shutil as _sh
+    p = _jail(path)
+    if p == SANDBOX:
+        raise ToolError("refusing to delete the workspace itself")
+    if not p.exists():
+        raise ToolError(f"no such file: {path}")
+    if p.is_dir():
+        if not recursive:
+            n = sum(1 for _ in p.rglob("*"))
+            raise ToolError(f"{path} is a folder with {n} item(s) — pass recursive=true to delete it")
+        _sh.rmtree(p)
+        return f"OK: deleted folder {path}"
+    size = p.stat().st_size
+    p.unlink()
+    return f"OK: deleted {path} ({size} bytes)"
 
 
 def load_skill(name: str) -> str:
@@ -276,12 +296,13 @@ REGISTRY = {
     "glob": glob,
     "grep": grep,
     "run_command": run_command,
+    "delete_file": delete_file,
     "load_skill": load_skill,
     "remember": remember,
 }
 
 # Tools that mutate state or run code -> need user approval unless yolo.
-GATED = {"write_file", "edit_file", "run_command"}
+GATED = {"write_file", "edit_file", "run_command", "delete_file"}
 
 # JSON schemas exposed to models that support native tool calling.
 SCHEMAS = [
@@ -309,12 +330,17 @@ SCHEMAS = [
             "pattern": {"type": "string"}, "path": {"type": "string"}}, "required": ["pattern"]}}},
     {"type": "function", "function": {
         "name": "run_command",
-        "description": "Run a shell command. cwd defaults to the workspace; pass a registered "
-                       "project folder to build there (e.g. gradlew build). timeout seconds, "
-                       "default 120 — use 600+ for a Gradle/Maven build.",
+        "description": "Run a shell command in the workspace (cwd = a subfolder of it). "
+                       "timeout seconds, default 120 — use 600+ for a Gradle/Maven build.",
         "parameters": {"type": "object", "properties": {
             "command": {"type": "string"}, "cwd": {"type": "string"},
             "timeout": {"type": "integer"}}, "required": ["command"]}}},
+    {"type": "function", "function": {
+        "name": "delete_file",
+        "description": "Delete a file in the workspace. recursive=true also deletes a folder "
+                       "and everything in it. Workspace only — nothing outside it.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string"}, "recursive": {"type": "boolean"}}, "required": ["path"]}}},
     {"type": "function", "function": {
         "name": "load_skill", "description": "Load a skill body by name.",
         "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}},

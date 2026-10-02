@@ -1,3 +1,10 @@
+# >>> PIVOT 35 — delete_file + workspace-only execution (2026-10-02) <<<
+User: deletes and commands must stay in the workspace (they point the workspace at their
+project via IDE -> PC -> Use). run_command cwd now goes through _jail (not _read_jail),
+gradle resolves + stops its gradlew walk-up at the workspace root, and delete_file(path,
+recursive) is workspace-only, gated, refuses the root and needs recursive for folders.
+Reads still reach registered project folders. 8 cases tested incl. .. escape and absolute paths.
+
 # >>> PIVOT 34 — gradle/builds, no-hallucination rule, real window drag (2026-10-02) <<<
 1. tools.run_command(command, cwd, timeout): runs in the workspace OR a registered project
    folder, up to 1800s, output trimmed. apps.gradle(task, project) walks up for gradlew/.bat,

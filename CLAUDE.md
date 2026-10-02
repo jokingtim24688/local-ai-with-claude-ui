@@ -105,9 +105,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   Epic Games Launcher, which needs the user's Epic sign-in once), then both start
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
-- `run_command` takes `cwd` (workspace, or a registered project folder) and `timeout` (to
-  1800s) so builds run in the user's own project; `gradle(task, project)` finds gradlew by
-  walking up and reports compile errors with file/line. Both gated.
+- **Commands and deletes never leave the workspace.** `run_command(command, cwd, timeout)`
+  and `gradle(task, project)` both resolve through `tools._jail`, and gradle's walk-up for
+  gradlew stops at the workspace root; `delete_file(path, recursive)` refuses the workspace
+  itself. To build a real project the user points the workspace at it (IDE -> PC -> Use).
+  Reading (read_file/list_dir/glob/grep) may still reach registered project folders. All gated.
 - The lead must never claim it built/compiled/created anything unless a tool call in that
   conversation returned success — it hallucinated finishing a Minecraft mod otherwise.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
