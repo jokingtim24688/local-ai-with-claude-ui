@@ -68,6 +68,8 @@ static/        index.html, style.css, app.js, hl.js (offline highlighter + chat
 skills/        <name>/SKILL.md — new ones are copied into NightCrew-data on each start
                (never overwriting the user's). blender-python / unreal-engine /
                roblox-studio = condensed official docs
+scripts/install_abliterated_models.ps1  one command to install 10 verified abliterated
+               models (curl + the matching official chat template), then rank them in-app
 elysium.spec + build*.{py,bat,sh}   packaging/installers
 ```
 

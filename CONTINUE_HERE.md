@@ -1,3 +1,13 @@
+# >>> PIVOT 41 — abliterated model installer (2026-10-02) <<<
+User wants ~20 abliterated models to rank in-app. Searched HF: most "abliterated instruct"
+hits are creative-writing merges, useless for tool calling. Shipped 10 VERIFIED ones
+(repo + exact Q4_K_M filename + size checked via hf_fs) in
+scripts/install_abliterated_models.ps1: llama3.1-abl x3, qwen2.5-7b-instruct-abl, qwen3-abl x2,
+granite3.3-abl, LFM2.5-Hermes-agentic (own template), hermes3-abl-3b, qwen2.5-coder-abl.
+Downloads with curl.exe (ollama pull hf.co/... hits the CDN "blocked redirect" on the user's
+box) and borrows the matching official Ollama template so tool calling works. ~46 GB total.
+NOTE: there is NO abliterated Hermes-3 8B on HF, only 3B.
+
 # >>> PIVOT 40b — rank every installed model (2026-10-02) <<<
 POST /api/model/test {"all": true} -> test_all_models(): every installed chat model (SKIP_MODELS
 drops embed/rerank/clip...), keep_alive=0 so each unloads, sorted by score desc. "Rank all my
