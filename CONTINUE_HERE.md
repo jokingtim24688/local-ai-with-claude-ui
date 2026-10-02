@@ -1,3 +1,12 @@
+# >>> PIVOT 45 — trusted workspace (2026-10-02) <<<
+User: "the model is in a secure workspace, it can do anything it wants to files". Setting
+`trust_workspace` (default True) + gate() short-circuit for WORKSPACE_SAFE =
+{write_file, edit_file, delete_file} — those are truly jailed by tools._jail. run_command /
+gradle / dotnet / npm / cmake_build etc. still ask: ONLY their cwd is jailed, the command
+string can reference any absolute path, so they are not equivalent. Checkbox in Customize ->
+Apps. Verified: file tools no longer prompt and still act, run_command still prompts, setting
+off restores prompting.
+
 # >>> PIVOT 44 — whole-app test (2026-10-02) <<<
 tests_app.py: 55 checks against a stub Ollama in a temp workspace + temp data dir — every GET
 route, X-NC guards, 6 sandbox-escape attempts, a real session (list -> read -> missing-file

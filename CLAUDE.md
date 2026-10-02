@@ -141,6 +141,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   (first the error lines, then the tail). `app_status` lists which toolchains are installed.
   DOMAIN_TOOLS maps each language domain to its builder, and gradle/dotnet/npm/python_run are
   in GENERAL_APP_TOOLS too, so "compile it" offers them even with no domain match.
+- **The workspace is trusted, the shell is not.** `write_file`/`edit_file`/`delete_file` are
+  jailed by `tools._jail`, so with setting `trust_workspace` (default ON, checkbox in
+  Customize -> Apps) they run WITHOUT an approval prompt. `run_command` and the build tools
+  stay gated on purpose: only their *working directory* is jailed — the command text can name
+  any absolute path on the machine, so they are not confined the way the file tools are.
 - **Commands and deletes never leave the workspace.** `run_command(command, cwd, timeout)`
   and `gradle(task, project)` both resolve through `tools._jail`, and gradle's walk-up for
   gradlew stops at the workspace root; `delete_file(path, recursive)` refuses the workspace

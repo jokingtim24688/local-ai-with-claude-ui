@@ -691,6 +691,7 @@ async function loadApps() {
   try {
     const st = await (await fetch("/api/settings")).json();
     if ($("#set-think")) $("#set-think").checked = !!st.think;
+    if ($("#set-trust")) $("#set-trust").checked = st.trust_workspace !== false;
     $("#set-auto-setup").checked = !!st.auto_setup; $("#set-launch").checked = !!st.launch_on_start;
     paintSetupLog(await (await fetch("/api/apps/setup")).json());
   } catch {}
@@ -755,6 +756,7 @@ function wireApps() {
   $("#set-auto-setup").onchange = saveSetting("auto_setup");
   $("#set-launch").onchange = saveSetting("launch_on_start");
   if ($("#set-think")) $("#set-think").onchange = saveSetting("think");
+  if ($("#set-trust")) $("#set-trust").onchange = saveSetting("trust_workspace");
   $("#setup-run").onclick = async () => {
     await fetch("/api/apps/setup", { method: "POST" }); pollSetup(); setTimeout(loadApps, 4000);
   };

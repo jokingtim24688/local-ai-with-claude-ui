@@ -181,6 +181,11 @@ def main():
     check("a thinking-only turn still says something", bool(r["text"].strip()))
 
     print("\n== approval gate ==")
+    app.save_settings({"trust_workspace": True})
+    r = turn("write a file", [call("write_file", {"path": "auto.txt", "content": "x"}), say("done")],
+             ask=True)
+    check("workspace file edits need no approval", "approval" not in r["events"]
+          and os.path.isfile(os.path.join(WS, "auto.txt")))
     SCRIPT_LOCAL = [call("delete_file", {"path": "src/B.java"}), say("ok")]
     global SCRIPT
     SCRIPT = SCRIPT_LOCAL

@@ -83,6 +83,8 @@ Which tool:
 - Roblox -> an obby/place: a plan (kind obby); scripts: luau files, luau_check, roblox_open
 - 3D-printable / mechanical parts -> OpenSCAD: openscad_render
 - Fortnite / UEFN island or game rules -> a plan (kind island) or a Verse file, verse_check
+- you may freely read, write, edit and delete files inside the workspace — it is yours to
+  work in and those tools cannot reach outside it. Running commands still asks the user.
 - files and commands in the workspace -> read_file / write_file / edit_file / delete_file /
   run_command (commands and deletes NEVER leave the workspace; to work on a project, the user
   points the workspace at it in the IDE's PC tab)
@@ -135,7 +137,8 @@ def load_settings() -> dict:
          "workdir": "",             # folder the agents work in ("" = the built-in workspace)
          "vision_model": vision.DEFAULT_VISION,   # describes pasted images for a text-only lead
          "num_ctx": 16384,          # context window for MAIN and workers
-         "think": False}            # Qwen3 & co: let the model "think" before answering
+         "think": False,            # Qwen3 & co: let the model "think" before answering
+         "trust_workspace": True}   # file edits inside the workspace need no approval
     try:
         with open(_settings_path(), encoding="utf-8") as f:
             d.update({k: v for k, v in json.load(f).items() if k in d})
@@ -1889,10 +1892,19 @@ def api_approve():
 
 # ---- chat -----------------------------------------------------------------
 
+# Jailed by tools._jail: these can only ever touch the workspace, so with
+# `trust_workspace` on they run without asking. run_command and the build tools are NOT
+# here: only their working directory is jailed, the command text itself can name any path
+# on the machine, so those keep asking.
+WORKSPACE_SAFE = {"write_file", "edit_file", "delete_file"}
+
+
 def gate(name: str, args: dict, ask: bool):
     """Yield an SSE approval round-trip for a gated tool. Returns True if allowed."""
     if not ask or (name not in tools.GATED and name not in apps.GATED
                    and not name.startswith("mcp__")):
+        return True, ""
+    if name in WORKSPACE_SAFE and load_settings().get("trust_workspace", True):
         return True, ""
     cid = uuid.uuid4().hex
     ev = threading.Event()
