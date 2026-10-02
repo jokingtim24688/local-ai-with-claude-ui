@@ -113,6 +113,12 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   Epic Games Launcher, which needs the user's Epic sign-in once), then both start
   minimized/hidden unless RAM >= 85%. Settings `auto_setup`, `launch_on_start`;
   log at `/api/apps/setup`.
+- **Build tools for ordinary apps, not just engines**: `dotnet` (C#), `npm` + `node_run`
+  (JS/TS), `python_run`, `cmake_build` (C/C++), `maven` and `gradle` (Java). All run in the
+  workspace through `_toolchain()`, are gated, and surface the real compiler/runtime errors
+  (first the error lines, then the tail). `app_status` lists which toolchains are installed.
+  DOMAIN_TOOLS maps each language domain to its builder, and gradle/dotnet/npm/python_run are
+  in GENERAL_APP_TOOLS too, so "compile it" offers them even with no domain match.
 - **Commands and deletes never leave the workspace.** `run_command(command, cwd, timeout)`
   and `gradle(task, project)` both resolve through `tools._jail`, and gradle's walk-up for
   gradlew stops at the workspace root; `delete_file(path, recursive)` refuses the workspace

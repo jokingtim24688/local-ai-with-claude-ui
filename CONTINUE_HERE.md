@@ -1,3 +1,13 @@
+# >>> PIVOT 39 — real build tools per language (2026-10-02) <<<
+Only gradle existed, so the lead could not build a C#/JS/Python/C++ app at all. Added to
+apps.py: dotnet, npm, node_run, python_run, cmake_build, maven (+ FINDERS/LABELS for
+dotnet/node/npm/cmake/gcc/python/javac/maven so app_status reports them). All share
+_toolchain(): workspace-jailed, gated, error lines first then tail, honest "not installed,
+install from X" when the toolchain is missing. DOMAIN_TOOLS: csharp->dotnet, web->npm+node_run,
+python->python_run, cpp->cmake_build, java->gradle+maven. Verified end to end in the sandbox:
+cmake produced a Demo binary that ran, a broken .cpp surfaced the real error, python traceback
+and node output came back, missing dotnet gave the install hint, /etc/passwd stayed blocked.
+
 # >>> PIVOT 38 — act-don't-ask prompt, typo-tolerant routing (2026-10-02) <<<
 User: "I shouldn't have to ask for a command to be run" + typos should just work.
 1. SYSTEM_PROMPT: ACT DON'T ASK (run the steps, "should I run it?" is not a question),

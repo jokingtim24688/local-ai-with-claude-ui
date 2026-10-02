@@ -154,12 +154,24 @@ FINDERS = {
     "openscad": lambda: __import__("engines").find_openscad(),
     "uefn": lambda: __import__("engines").find_uefn(),
     "runinroblox": lambda: _which("run-in-roblox"),
+    # toolchains for building ordinary apps, not just game engines
+    "dotnet": lambda: _which("dotnet"),
+    "node": lambda: _which("node"),
+    "npm": lambda: _which("npm.cmd") or _which("npm"),
+    "cmake": lambda: _which("cmake"),
+    "gcc": lambda: _which("g++") or _which("clang++") or _which("gcc"),
+    "python": lambda: _which("python") or _which("python3"),
+    "javac": lambda: _which("javac"),
+    "maven": lambda: _which("mvn.cmd") or _which("mvn"),
 }
 
 LABELS = {"blender": "Blender", "unreal": "Unreal Engine", "roblox": "Roblox Studio",
           "rojo": "Rojo (Roblox sync)", "luau": "luau-analyze / selene",
           "openscad": "OpenSCAD", "uefn": "UEFN (Unreal Editor for Fortnite)",
-          "runinroblox": "run-in-roblox (Studio test runner)"}
+          "runinroblox": "run-in-roblox (Studio test runner)",
+          "dotnet": ".NET SDK (C#)", "node": "Node.js", "npm": "npm", "cmake": "CMake",
+          "gcc": "C/C++ compiler", "python": "Python", "javac": "Java compiler (JDK)",
+          "maven": "Maven"}
 
 
 def app_path(key: str) -> str | None:
@@ -684,6 +696,66 @@ def unreal_quick_level(name: str = "SimpleLevel", project: str = "") -> str:
 
 # ---- registry (MAIN only; subagents write, MAIN runs + debugs) --------------
 
+def _build_dir(project: str):
+    d = Path(str(tools._jail(project))) if project else Path(str(tools.SANDBOX))
+    return d.parent if d.is_file() else d
+
+
+def _toolchain(key: str, cmd: list, project: str, timeout: int, hint: str) -> str:
+    exe = app_path(key)
+    if not exe:
+        raise tools.ToolError(f"{LABELS.get(key, key)} is not installed or not on PATH. {hint}")
+    root = _build_dir(project)
+    code, out = _run([exe] + cmd, max(15, min(int(timeout), 3600)), cwd=str(root))
+    lines = out.splitlines()
+    bad = [l for l in lines if re.search(r"\berror\b|\bERR!\b|FAILED|Exception|warning CS|: error", l)][:40]
+    body = ("PROBLEMS:\n" + "\n".join(bad) + "\n--- tail ---\n" if bad else "") + "\n".join(lines[-40:])
+    return f"exit={code} ({os.path.basename(exe)} {' '.join(cmd)} in {root})\n{_tail(body, 5000)}"
+
+
+def dotnet(args: str = "build", project: str = "", timeout: int = 900) -> str:
+    """C# / .NET: 'build', 'run', 'test', 'new console -o MyApp', 'add package X'."""
+    return _toolchain("dotnet", args.split(), project, timeout,
+                      "Install the .NET SDK from dotnet.microsoft.com/download.")
+
+
+def npm(args: str = "install", project: str = "", timeout: int = 900) -> str:
+    """JS/TS: 'install', 'run build', 'run dev', 'test', 'init -y'. Needs a package.json."""
+    return _toolchain("npm", args.split(), project, timeout,
+                      "Install Node.js from nodejs.org (npm comes with it).")
+
+
+def node_run(script: str, args: str = "", timeout: int = 300) -> str:
+    """Run a JavaScript file with Node."""
+    return _toolchain("node", [str(tools._jail(script))] + (args.split() if args else []),
+                      "", timeout, "Install Node.js from nodejs.org.")
+
+
+def python_run(script: str, args: str = "", timeout: int = 600) -> str:
+    """Run a Python file."""
+    return _toolchain("python", [str(tools._jail(script))] + (args.split() if args else []),
+                      "", timeout, "Install Python from python.org.")
+
+
+def cmake_build(project: str = "", target: str = "", timeout: int = 1800) -> str:
+    """C/C++: configure into build/ then compile. Needs a CMakeLists.txt."""
+    root = _build_dir(project)
+    if not (root / "CMakeLists.txt").is_file():
+        raise tools.ToolError(f"no CMakeLists.txt in {root} — write one first (see the cpp skill)")
+    out = _toolchain("cmake", ["-B", "build", "-S", "."], project, timeout,
+                     "Install CMake from cmake.org.")
+    if not out.startswith("exit=0"):
+        return "CONFIGURE FAILED\n" + out
+    return out + "\n" + _toolchain("cmake", ["--build", "build"] + (["--target", target] if target else []),
+                                    project, timeout, "")
+
+
+def maven(args: str = "package", project: str = "", timeout: int = 1800) -> str:
+    """Java with Maven: 'package', 'compile', 'test'. Needs a pom.xml."""
+    return _toolchain("maven", args.split(), project, timeout,
+                      "Install Maven, or use gradle if the project has a gradlew.")
+
+
 def gradle(task: str = "build", project: str = "", timeout: int = 900) -> str:
     """Run the Gradle wrapper in a project folder (Minecraft mods, Android, plain Java).
     Finds gradlew / gradlew.bat by walking up from `project`, falling back to a `gradle`
@@ -718,6 +790,12 @@ def gradle(task: str = "build", project: str = "", timeout: int = 900) -> str:
 
 REGISTRY = {
     "gradle": gradle,
+    "dotnet": dotnet,
+    "npm": npm,
+    "node_run": node_run,
+    "python_run": python_run,
+    "cmake_build": cmake_build,
+    "maven": maven,
     "app_status": app_status,
     "blender_run": blender_run,
     "blender_open": blender_open,
@@ -743,7 +821,8 @@ REGISTRY = {
     "roblox_test": lambda **a: __import__("engines").roblox_test(**a),
 }
 # run code or launch programs -> approval unless Auto is on
-GATED = {"gradle", "blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
+GATED = {"gradle", "dotnet", "npm", "node_run", "python_run", "cmake_build", "maven",
+         "blender_run", "blender_open", "unreal_run_python", "unreal_uat", "unreal_open",
          "roblox_open", "rojo", "app_control", "unreal_quick_level", "openscad_render", "run_plan",
          "unreal_new_project", "uefn_open", "roblox_test"}
 
@@ -756,6 +835,21 @@ def _fn(name, desc, props=None, req=None):
 
 _S = {"type": "string"}
 SCHEMAS = [
+    _fn("dotnet", "C# / .NET: args 'build', 'run', 'test', 'new console -o MyApp', "
+        "'add package Newtonsoft.Json'. Runs in the workspace. Errors come back with file and line.",
+        {"args": _S, "project": _S, "timeout": {"type": "integer"}}),
+    _fn("npm", "JavaScript/TypeScript: args 'install', 'run build', 'run dev', 'test'. "
+        "Needs a package.json in the workspace.",
+        {"args": _S, "project": _S, "timeout": {"type": "integer"}}),
+    _fn("node_run", "Run a JavaScript file with Node and return its output.",
+        {"script": _S, "args": _S}, ["script"]),
+    _fn("python_run", "Run a Python file and return its output (stdout + any traceback).",
+        {"script": _S, "args": _S}, ["script"]),
+    _fn("cmake_build", "C/C++: configure and compile a CMake project (needs CMakeLists.txt). "
+        "Compiler errors come back with file and line.",
+        {"project": _S, "target": _S, "timeout": {"type": "integer"}}),
+    _fn("maven", "Java with Maven: args 'package', 'compile', 'test'. Needs a pom.xml.",
+        {"args": _S, "project": _S, "timeout": {"type": "integer"}}),
     _fn("gradle", "Build/run a Gradle project (Minecraft mod, Android, Java app) with its own "
         "gradlew: task 'build', 'runClient', 'clean build', 'test'. Runs in the workspace "
         "(project = a subfolder of it). Compile errors come back with file and line.",

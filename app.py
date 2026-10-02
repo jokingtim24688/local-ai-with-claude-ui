@@ -85,6 +85,9 @@ Which tool:
 - files and commands in the workspace -> read_file / write_file / edit_file / delete_file /
   run_command (commands and deletes NEVER leave the workspace; to work on a project, the user
   points the workspace at it in the IDE's PC tab)
+- build/run an ordinary app: C# -> dotnet ("build", "run"); JS/TS -> npm ("install",
+  "run build") and node_run; Python -> python_run; C/C++ -> cmake_build; Java -> gradle or
+  maven. Write the files, BUILD, read the real errors, fix, build again.
 - build a Java/Minecraft/Android project -> gradle (task "build", "runClient"), then READ the
   errors it prints and fix the real files. A Fabric/Forge mod builds with gradle, NOT javac.
   Keep going: build -> read the first error -> fix that file -> build again, until it passes
@@ -270,14 +273,18 @@ DOMAIN_TOOLS = {
     "unreal": ["unreal_quick_level", "unreal_new_project", "unreal_run_python", "unreal_open",
                "unreal_uat", "run_plan", "terrain_heightmap"],
     "fortnite": ["run_plan", "verse_check", "terrain_heightmap", "uefn_list", "uefn_open"],
-    "java": ["gradle"],
-    "csharp": ["app_control"],
-    "cpp": ["app_control"],
+    "java": ["gradle", "maven"],
+    "csharp": ["dotnet"],
+    "cpp": ["cmake_build"],
+    "web": ["npm", "node_run"],
+    "python": ["python_run"],
     "roblox": ["run_plan", "roblox_open", "luau_check", "rojo", "roblox_test"],
 }
 CORE_APP_TOOLS = ["app_status", "app_control", "open_url", "fetch_docs"]
 GENERAL_APP_TOOLS = ["blender_run", "openscad_render", "unreal_quick_level", "run_plan",
-                     "roblox_open", "uefn_open", "gradle"]   # building is not domain-specific
+                     "roblox_open", "uefn_open",
+                     # building/running is not domain-specific: always offer these
+                     "gradle", "dotnet", "npm", "python_run"]
 
 
 def lead_app_tools(task: str) -> list:
