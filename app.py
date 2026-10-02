@@ -333,6 +333,37 @@ def api_settings_save():
     return jsonify(save_settings(request.get_json(force=True) or {}))
 
 
+# ---- chats: stored next to the app, NOT in browser storage ------------------
+# The window's port can change between launches (free_port), and browser storage is keyed
+# by origin — kept there, every chat would vanish on a port change.
+
+def _chats_path() -> str:
+    return paths.data("chats.json")
+
+
+@app.get("/api/chats")
+def api_chats():
+    try:
+        with open(_chats_path(), encoding="utf-8") as f:
+            return jsonify(json.load(f))
+    except Exception:
+        return jsonify({"convos": [], "projects": [], "instructions": ""})
+
+
+@app.post("/api/chats")
+def api_chats_save():
+    if request.headers.get("X-NC") != "1":
+        return jsonify({"error": "missing X-NC header"}), 403
+    body = request.get_json(force=True) or {}
+    data = {"convos": body.get("convos") or [], "projects": body.get("projects") or [],
+            "instructions": body.get("instructions") or ""}
+    tmp = _chats_path() + ".tmp"                       # write-then-rename: never a half file
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    os.replace(tmp, _chats_path())
+    return jsonify({"ok": True, "convos": len(data["convos"])})
+
+
 # ---- integrations: Telegram bot + Gmail watcher -----------------------------
 
 def seed_builtin_connectors() -> None:

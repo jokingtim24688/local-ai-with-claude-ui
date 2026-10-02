@@ -119,7 +119,7 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
 ## Backend API (keep event/field names stable, or change both sides at once)
 `/api/branding /config /settings /models /skills /memory /tree /file /vm /system /tasks
 /bus /subagents /connectors /targets /apps(+/launch,/docs/prefetch,/setup) /open-url
-/fs/list /fs/read /workspace /integrations /google/{signin,signout} /bridges
+/fs/list /fs/read /workspace /chats /integrations /google/{signin,signout} /bridges
 /git/{status,diff,push} /chat(SSE) /approve`
 SSE events: `token, tool_call, tool_result, approval, image_note, error, done`.
 Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` gives them natively to a vision lead or has the `vision_model` describe them for a text-only lead.
@@ -129,9 +129,12 @@ Images: composer paste/attach/drop -> `/api/chat` message `images`; `vision.py` 
   live at the top of `style.css` (`--sky-*`, `--accent*`, `--ctp-*`).
 - pywebview `js_api`: never keep the window (or any native object) in a PUBLIC
   attribute — pywebview walks public attributes recursively (the drag crash). Use `_window`.
-- Runtime json (subagents/tasks/bus/connectors/targets/settings/apps, MEMORY.md, prompt.md) is
+- Runtime json (subagents/tasks/bus/connectors/targets/settings/apps/chats, MEMORY.md, prompt.md) is
   gitignored; it's user data, written to `NightCrew-data/` next to the exe (Windows),
   `~/Library/Application Support/NightCrew` (macOS app), or the repo root (dev).
 - No content filter is added; refusals come from model weights.
 - Regenerate `preview_*.png` after a big visual change (rendered from the real CSS).
+- Chats/projects/instructions live in `chats.json` in the data dir, NOT in browser
+  storage: the window's port can change between launches and localStorage is keyed by
+  origin, so browser-stored chats disappeared. `GET/POST /api/chats` (POST needs `X-NC: 1`).
 - Vanilla JS + Flask, no build step for the UI.

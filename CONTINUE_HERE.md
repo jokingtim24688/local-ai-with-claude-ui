@@ -1,3 +1,13 @@
+# >>> PIVOT 31 — chats persist on disk; read-not-create fix; language skills (2026-10-02) <<<
+1. Chat history was lost whenever desktop.free_port() picked 5174/5175/0: localStorage is keyed by
+   origin. Chats/projects/instructions now live in NightCrew-data/chats.json via GET/POST /api/chats
+   (X-NC header, atomic write-then-rename, 400ms debounce, one-time migration from localStorage).
+2. tools: read_file/list_dir/glob/grep also reach registered project folders (apps.json) via
+   _read_jail; missing-file error lists near matches and forbids inventing it; exec_tags no longer
+   overwrites an EXISTING file when the block has no `run` (that was silent data loss).
+3. skills/lang-{python,java,csharp,cpp,web}: layout, build+check commands, real menu-bar code,
+   traps. Auto-checks added for .java (javac), .c/.cpp (-fsyntax-only), .ts (tsc --noEmit).
+
 # >>> PIVOT 30 — chat-output fix + tool-capability detection (2026-10-01) <<<
 1. toolcalls.visible_text(): tool-call JSON a small model TYPES never reaches the chat (also fixes
    duplicated prose after a nudge, half-streamed calls, blank replies). tests_chat_output.py guards it.

@@ -15,7 +15,7 @@ const state = {
 
 init();
 async function init() {
-  load();
+  await load();
   wireSidebar(); wireViews(); wireComposer(); wireCustomize(); wireConnectors();
   wireApps(); wireCodeCopy(); wireIDE();
   setGreeting(); renderThread();       // show the selected chat on startup
@@ -29,22 +29,43 @@ async function init() {
 }
 
 /* ---------- persistence ---------- */
-function load() {
-  // renamed from Ai Heaven: carry saved chats/projects/instructions over once
-  for (const k of ["convos", "projects", "instructions"]) {
-    try { const old = localStorage.getItem("aiheaven." + k);
-      if (old !== null && localStorage.getItem("nightcrew." + k) === null) localStorage.setItem("nightcrew." + k, old); } catch {}
+// Chats live in NightCrew-data/chats.json on disk. They used to live in browser storage,
+// which is keyed by origin — so a different port on the next launch looked like "no chats".
+let saveTimer = null;
+
+async function load() {
+  let disk = { convos: [], projects: [], instructions: "" };
+  try { disk = await (await fetch("/api/chats")).json(); } catch {}
+  state.convos = disk.convos || [];
+  state.projects = disk.projects || [];
+  state.instructions = disk.instructions || "";
+
+  if (!state.convos.length) {                       // one-time move off browser storage
+    for (const k of ["convos", "projects", "instructions"]) {
+      try {
+        const v = localStorage.getItem("nightcrew." + k) ?? localStorage.getItem("aiheaven." + k);
+        if (v === null) continue;
+        if (k === "instructions") state.instructions = v;
+        else state[k] = JSON.parse(v) || [];
+      } catch {}
+    }
+    if (state.convos.length || state.projects.length || state.instructions) save(true);
   }
-  try { state.convos = JSON.parse(localStorage.getItem(K.convos)) || []; } catch {}
-  try { state.projects = JSON.parse(localStorage.getItem(K.projects)) || []; } catch {}
-  state.instructions = localStorage.getItem(K.instr) || "";
   if (state.convos.length) state.cur = state.convos.find((c) => !c.archived)?.id || state.convos[0].id;
   else newChat();
 }
-function save() {
+
+function save(now = false) {
+  const body = JSON.stringify({ convos: state.convos.slice(0, 100), projects: state.projects,
+    instructions: state.instructions });
   try { localStorage.setItem(K.convos, JSON.stringify(state.convos.slice(0, 100))); } catch {}
-  try { localStorage.setItem(K.projects, JSON.stringify(state.projects)); } catch {}
+  clearTimeout(saveTimer);
+  const put = () => fetch("/api/chats", { method: "POST",
+    headers: { "Content-Type": "application/json", "X-NC": "1" }, body }).catch(() => {});
+  if (now) put(); else saveTimer = setTimeout(put, 400);     // typing shouldn't hit the disk every keystroke
 }
+addEventListener("beforeunload", () => save(true));
+
 function curConvo() { return state.convos.find((c) => c.id === state.cur); }
 
 /* ---------- conversations ---------- */
@@ -282,7 +303,7 @@ function wireCustomize() {
   $("#reload-mem").onclick = loadMemory;
   $("#instructions").value = state.instructions;
   $("#save-instructions").onclick = () => {
-    state.instructions = $("#instructions").value; localStorage.setItem(K.instr, state.instructions);
+    state.instructions = $("#instructions").value; save();      // -> chats.json, not browser storage
     $("#save-instructions").textContent = "Saved ✓"; setTimeout(() => ($("#save-instructions").textContent = "Save"), 1200);
   };
   $("#sa-add").onclick = async () => {
