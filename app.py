@@ -593,6 +593,11 @@ def model_caps(client, name: str):
     return None
 
 
+# Tools that change what is on disk. After one succeeds, a command that was already run this
+# turn is allowed again — "javac" after writing a .java file is NOT a pointless repeat.
+WRITE_TOOLS = {"write_file", "edit_file", "delete_file"}
+
+
 def think_arg(client, model: str) -> dict:
     """{'think': bool} for a model whose capabilities include thinking, else {}. Sending
     `think` to a model without it makes Ollama reject the whole request."""
@@ -1846,7 +1851,9 @@ def api_chat():
             native = False
             msgs[0]["content"] += text_tool_note(schemas)
         retries = 0
-        done_calls: dict = {}          # (tool, args) -> times called this turn, to break loops
+        done_calls: dict = {}          # (tool, args, world) -> times called, to break loops
+        world = 0                      # bumped when a tool CHANGES files, so re-running a
+                                       # build after writing code is a new call, not a repeat
         ran_ok = False                 # did ANY tool actually succeed this turn?
         forced = 0                     # times we made it retry after an empty-handed claim
         loop_strikes = 0               # how often it ignored "stop repeating that call"
@@ -1976,12 +1983,12 @@ def api_chat():
 
                     # Small models get stuck repeating one call (e.g. `remember` with the same
                     # note). Running it again cannot change anything, so answer it from here.
-                    sig = name + json.dumps(args, sort_keys=True, default=str)
+                    sig = f"{name}|{json.dumps(args, sort_keys=True, default=str)}|{world}"
                     done_calls[sig] = done_calls.get(sig, 0) + 1
                     if done_calls[sig] > 1:
-                        result = (f"(already called {name} with exactly these arguments this turn — "
-                                  "the result has not changed. Do NOT call it again: answer the user "
-                                  "in plain sentences now.)")
+                        result = (f"(already called {name} with exactly these arguments, and nothing "
+                                  "on disk changed since, so the result is identical. Do NOT repeat "
+                                  "it: either do the NEXT step, or answer the user in plain sentences.)")
                         yield sse("tool_result", {"name": name, "result": result})
                         msgs.append({"role": "tool", "content": result})
                         looping = True              # one warning is enough, then force an answer
@@ -2028,6 +2035,8 @@ def api_chat():
 
                     if not str(result).lstrip().startswith(("error", "FAILED", "blocked")):
                         ran_ok = True
+                        if name in WRITE_TOOLS:      # the files changed: earlier calls may now
+                            world += 1               # give a different answer, so allow re-runs
                     yield sse("tool_result", {"name": name, "result": result})
                     msgs.append({"role": "tool", "content": result})
 

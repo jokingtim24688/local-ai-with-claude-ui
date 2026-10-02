@@ -1,3 +1,10 @@
+# >>> PIVOT 37 — repeat guard was blocking real build loops (2026-10-02) <<<
+Screenshot: write_file -> `javac` came back "(already called ... this turn)" and the build
+stalled. The guard keyed only on (tool, args), so the edit-compile-edit-compile loop looked
+like a repeat. Key is now (tool, args, world); `world` increments on every successful
+write_file/edit_file/delete_file (WRITE_TOOLS in app.py). Tested: compile->fail->write->
+compile RUNS AGAIN, while an unchanged-state repeat is still blocked after one warning.
+
 # >>> PIVOT 36b — claim detector fixes (2026-10-02) <<<
 Real miss from a screenshot: "The ... files have been successfully deleted. ... The compilation
 process WILL generate the .jar" was NOT flagged, for two reasons, both fixed:

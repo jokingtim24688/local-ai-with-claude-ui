@@ -121,9 +121,11 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   were offered and whether native or text tool calling was used, so it is obvious whether the
   app or the model is at fault. Claims are judged per sentence; plans never match.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
-  (classically `remember`). The same (tool, args) is executed ONCE per turn; a repeat returns
-  "already called, nothing changed — answer now", and a second repeat ends the turn with a
-  note. Workers have the same guard. Nothing is ever run twice.
+  (classically `remember`). The key is (tool, args, **world**) where `world` increments every
+  time a WRITE_TOOLS call (write_file/edit_file/delete_file) succeeds — so re-running `javac`
+  or `gradle build` AFTER fixing a file is a new call, not a blocked repeat (that bug stopped
+  a real build). A true repeat returns "nothing changed since — do the next step", and a
+  second one ends the turn. Workers have the simpler guard.
 - **Thinking models** (Qwen3 and friends): `think` is sent ONLY to models whose Ollama
   capabilities list `thinking` (sending it to others makes Ollama reject the request), and
   it defaults to OFF (setting `think`, toggle in Customize -> Apps) because a thinking model
