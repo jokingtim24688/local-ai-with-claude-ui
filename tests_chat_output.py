@@ -89,6 +89,8 @@ if __name__ == "__main__":
         if half and body.count(half) > 1:
             FAILS.append(f"{name} (shown twice)")
     # an unbacked "I built it" must be flagged
+    if "Making it use its tools now" not in out["claims it deleted files with no tools"]:
+        FAILS.append("no forced retry after an empty-handed claim")
     for n in ("claims it built a mod with no tools", "claims it deleted files with no tools"):
         if "⚠" not in out[n]:
             FAILS.append(f"unflagged claim: {n}")

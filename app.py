@@ -1848,6 +1848,7 @@ def api_chat():
         retries = 0
         done_calls: dict = {}          # (tool, args) -> times called this turn, to break loops
         ran_ok = False                 # did ANY tool actually succeed this turn?
+        forced = 0                     # times we made it retry after an empty-handed claim
         loop_strikes = 0               # how often it ignored "stop repeating that call"
         shown = ""                     # visible prose the UI has received this turn
         dup = ""                       # prose shown before a nudge, to not repeat it after
@@ -1922,12 +1923,28 @@ def api_chat():
                              "tool_calls": calls or None})
 
                 if not calls:
-                    # it says it finished something, but nothing actually ran: say so plainly
+                    # It says it finished something but nothing ran. Don't just warn — make it
+                    # do the work: tell it plainly that it called nothing, and run one more round.
                     if ran_ok is False and toolcalls.claims_work_done(shown):
-                        yield sse("token", "\n\n⚠ No tool call succeeded this turn, so nothing was "
-                                           "actually created, changed or compiled — the claim above "
-                                           "is not true. Ask it to use its tools (write_file, gradle, "
-                                           "run_command) and check the workspace yourself.")
+                        how = (f"{len(schemas or [])} tools offered, "
+                               + ("native tool calling" if native else "text tool calls"))
+                        if forced < 1:
+                            forced += 1
+                            yield sse("token", f"\n\n⚠ You called no tool, so nothing happened "
+                                               f"({how}). Making it use its tools now…\n")
+                            msgs.append({"role": "user", "content":
+                                         "(system) You called NO tool, so nothing on disk changed and "
+                                         "your last message was false. Do it NOW with a real tool "
+                                         "call: delete_file to delete, write_file to create, "
+                                         "run_command or gradle to build. Call the tool — do not "
+                                         "describe it, do not apologise."})
+                            shown = ""
+                            continue
+                        yield sse("token", f"\n\n⚠ No tool call succeeded this turn ({how}), so "
+                                           "nothing was created, changed or compiled — the claim "
+                                           "above is not true. This model is ignoring its tools: try "
+                                           "a new chat (a long history makes it copy its own earlier "
+                                           "answers), or a different lead model.")
                     if not shown.strip():
                         # a turn must never end with an empty bubble: say what happened
                         if thought.strip() and not acc.strip():

@@ -116,8 +116,10 @@ elysium.spec + build*.{py,bat,sh}   packaging/installers
   (an 8B lead kept claiming it finished a Minecraft mod). The loop tracks `ran_ok` (any tool
   result not starting error/FAILED/blocked); if nothing succeeded and
   `toolcalls.claims_work_done(reply)` matches a completion claim ("I have created…",
-  "has been built", "your mod is ready"), a ⚠ line is appended saying it is not true.
-  Plans ("I would create…", "to build this, run…") never match.
+  "has been built", "your mod is ready"), the loop FORCES one more round ("You called NO tool
+  … call the tool now") and only then gives up with a ⚠. Both messages report how many tools
+  were offered and whether native or text tool calling was used, so it is obvious whether the
+  app or the model is at fault. Claims are judged per sentence; plans never match.
 - **Repeated tool calls**: small leads get stuck calling one tool with identical arguments
   (classically `remember`). The same (tool, args) is executed ONCE per turn; a repeat returns
   "already called, nothing changed — answer now", and a second repeat ends the turn with a
