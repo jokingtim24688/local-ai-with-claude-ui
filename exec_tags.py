@@ -91,8 +91,19 @@ def run_call(b: dict):
 
 
 def to_calls(text: str, known: set) -> list:
+    """Execution-tag blocks -> tool calls. A block for a file that ALREADY exists and has no
+    `run` is almost always the model echoing a file it was asked to read, so it is skipped —
+    otherwise a "show me this file" turn would overwrite the real file with invented text.
+    To change an existing file on purpose the model uses edit_file/write_file, or adds `run`."""
+    import tools
     calls = []
     for b in blocks(text):
+        if not b["run"]:
+            try:
+                if tools._read_jail(b["file"]).is_file():
+                    continue
+            except Exception:
+                pass
         calls.append(_call("write_file", {"path": b["file"], "content": b["code"]}))
         if b["run"]:
             c = run_call(b)

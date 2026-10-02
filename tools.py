@@ -45,12 +45,74 @@ def _jail(rel: str) -> Path:
     return target
 
 
+def read_roots() -> list:
+    """Folders the agents may READ from: the workspace + the project folders the user
+    registered in Customize -> Apps (+ the engines' standard project folders). Writing
+    still only ever happens inside the workspace."""
+    roots = [SANDBOX] if SANDBOX else []
+    try:
+        import apps
+        extra = apps.load_cfg()["projects"] + apps._std_roots()
+    except Exception:
+        extra = []
+    for r in extra:
+        try:
+            p = Path(r).expanduser().resolve()
+            if p.is_dir() and p not in roots:
+                roots.append(p)
+        except Exception:
+            continue
+    return roots
+
+
+def _read_jail(rel: str) -> Path:
+    """Like _jail but also accepts a path inside a registered project folder."""
+    if not os.path.isabs(rel):
+        try:
+            return _jail(rel)
+        except ToolError:
+            raise
+    real = Path(rel).expanduser().resolve()
+    for root in read_roots():
+        if real == root or root in real.parents:
+            return real
+    raise ToolError(f"blocked: '{rel}' is outside the workspace and the registered project "
+                    "folders — add its folder in Customize -> Apps to read it")
+
+
+def _near(name: str, limit: int = 8) -> list:
+    """Existing files whose name looks like `name`, to steer a model that would otherwise
+    invent the file. Searches the workspace and the registered project folders."""
+    want = os.path.basename(name).lower()
+    stem = os.path.splitext(want)[0]
+    hits = []
+    for root in read_roots():
+        try:
+            for f in root.rglob("*"):
+                if not f.is_file() or f.name.startswith("."):
+                    continue
+                n = f.name.lower()
+                if n == want or stem and (stem in n or os.path.splitext(n)[0] in stem):
+                    hits.append(str(f))
+                    if len(hits) >= limit:
+                        return hits
+        except Exception:
+            continue
+    return hits
+
+
 # ---- tools -----------------------------------------------------------------
 
 def read_file(path: str) -> str:
-    p = _jail(path)
+    p = _read_jail(path)
     if not p.is_file():
-        raise ToolError(f"no file: {path}")
+        near = _near(path)
+        hint = ("\nDid you mean one of these? Read one of these paths instead:\n- " +
+                "\n- ".join(near)) if near else (
+            "\nUse glob/list_dir to find it. If it is outside the workspace, the user must add "
+            "its folder in Customize -> Apps.")
+        raise ToolError(f"no file: {path}. This file does NOT exist — do NOT create it or invent "
+                        f"its contents.{hint}")
     return p.read_text(encoding="utf-8", errors="replace")
 
 
@@ -75,7 +137,7 @@ def edit_file(path: str, old: str, new: str) -> str:
 
 
 def list_dir(path: str = ".") -> str:
-    p = _jail(path)
+    p = _read_jail(path)
     if not p.is_dir():
         raise ToolError(f"no dir: {path}")
     rows = []
@@ -85,15 +147,22 @@ def list_dir(path: str = ".") -> str:
 
 
 def glob(pattern: str) -> str:
+    """Search the workspace, then the registered project folders (so the agents can FIND an
+    existing file instead of assuming it is missing)."""
     if SANDBOX is None:
         raise ToolError("no sandbox set")
     hits = [str(m.relative_to(SANDBOX)) for m in SANDBOX.glob(pattern)]
-    return "\n".join(sorted(hits)) or "(no matches)"
+    if not hits:
+        for root in read_roots()[1:]:
+            hits += [str(m) for m in root.glob(pattern)][:50]
+            if len(hits) >= 50:
+                break
+    return "\n".join(sorted(hits)[:200]) or "(no matches)"
 
 
 def grep(pattern: str, path: str = ".") -> str:
     import re
-    root = _jail(path)
+    root = _read_jail(path)
     rx = re.compile(pattern)
     out = []
     files = [root] if root.is_file() else root.rglob("*")
@@ -103,7 +172,11 @@ def grep(pattern: str, path: str = ".") -> str:
         try:
             for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                 if rx.search(line):
-                    out.append(f"{f.relative_to(SANDBOX)}:{i}: {line.strip()}")
+                    try:
+                        where = f.relative_to(SANDBOX)
+                    except ValueError:
+                        where = f                      # a registered project folder
+                    out.append(f"{where}:{i}: {line.strip()}")
         except Exception:
             continue
     return "\n".join(out[:200]) or "(no matches)"

@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import threading
 import uuid
 
@@ -69,6 +70,10 @@ Which tool:
 - 3D-printable / mechanical parts -> OpenSCAD: openscad_render
 - Fortnite / UEFN island or game rules -> a plan (kind island) or a Verse file, verse_check
 - files and commands in the workspace -> read_file / write_file / edit_file / run_command
+NEVER invent a file that is supposed to already exist. If the user says "read / look at / use
+my <file>", call read_file. If that says the file is missing, use glob or list_dir to FIND it
+and read the real one — do not create it and do not guess what is inside it. Only create a
+file when the user asks for something new.
 - check what's installed -> app_status
 To write code, reply with a fenced block whose first line says where it goes and
 whether to run it: ```openscad file=models/gear.scad run``` (also bpy, luau, verse,
@@ -1312,6 +1317,35 @@ def _auto_checks(files: list) -> list:
                 r = subprocess.run(["node", "--check", str(p)], capture_output=True, text=True, timeout=30)
                 out.append(f"{rel}: " + ("OK (node --check)" if r.returncode == 0
                                           else "SYNTAX ERROR\n" + (r.stderr or r.stdout)[-600:]))
+            elif ext in (".java",) and shutil.which("javac"):
+                with tempfile.TemporaryDirectory() as d:
+                    r = subprocess.run(["javac", "-d", d, str(p)], capture_output=True, text=True, timeout=120)
+                # drop the JVM's "Picked up JAVA_TOOL_OPTIONS/_JAVA_OPTIONS" banner, which can be
+                # longer than the error itself and would push the real message out of the tail
+                msg = "\n".join(l for l in (r.stderr or r.stdout).splitlines()
+                                if not l.startswith("Picked up ")).strip()
+                out.append(f"{rel}: " + ("OK (javac)" if r.returncode == 0
+                                          else "COMPILE ERROR\n" + msg[-800:]))
+            elif ext in (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".c", ".h"):
+                cc = shutil.which("g++" if ext not in (".c", ".h") else "gcc") or shutil.which("clang++")
+                if cc:
+                    std = "-std=c11" if ext in (".c", ".h") else "-std=c++17"
+                    # -fsyntax-only: parse and type-check, never build or link
+                    r = subprocess.run([cc, std, "-fsyntax-only", "-Wall", str(p)],
+                                       capture_output=True, text=True, timeout=120)
+                    msg = (r.stderr or r.stdout).strip()
+                    out.append(f"{rel}: " + ("OK (syntax)" + (f" — warnings:\n{msg[-500:]}" if msg else "")
+                                              if r.returncode == 0 else "COMPILE ERROR\n" + msg[-800:]))
+                else:
+                    out.append(f"{rel}: not compiled (install g++/clang)")
+            elif ext in (".ts", ".tsx") and shutil.which("npx"):
+                r = subprocess.run(["npx", "--no-install", "tsc", "--noEmit", "--skipLibCheck", str(p)],
+                                   capture_output=True, text=True, timeout=180)
+                msg = (r.stdout or r.stderr).strip()
+                out.append(f"{rel}: " + ("OK (tsc)" if r.returncode == 0
+                                          else ("not type-checked (no local typescript)"
+                                                if "could not determine" in msg.lower() or "not found" in msg.lower()
+                                                else "TYPE ERROR\n" + msg[-800:])))
             elif ext in (".lua", ".luau"):
                 if apps.app_path("luau"):
                     out.append(f"{rel}: " + apps.luau_check(rel)[:600])
